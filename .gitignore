@@ -1,0 +1,12 @@
+# Google Apps Script / Local Development
+.clasp.json
+node_modules/
+
+# Environment / Secrets
+.env
+.env.local
+
+# Gemini CLI / Internal
+.gemini/
+plans/
+C:/Users/soral/.gemini/tmp/electric-meter/
