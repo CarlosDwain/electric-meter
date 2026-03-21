@@ -1,33 +1,30 @@
 /**
  * Electric Meter Tracker — Telegram Bot
- * Version 5.2 (All improvements applied)
- *
- * Improvements over v5.1:
- *  - Duplicate submission guard (60 second window)
- *  - State timeout (10 minutes)
- *  - Concurrent write lock (LockService)
- *  - /cancel command
- *  - /last command
- *  - /status command
- *  - Sanity check on manual input (warns if value is far from last reading)
- *  - Gap warning before logging if last reading was >24 hours ago
- *  - Input cleaning (common OCR-style typos like O→0, l→1)
+ * Version 5.3 (Secure & Sanitized)
  */
 
-const BOT_TOKEN  = "YOUR_BOT_TOKEN_HERE";
-const SHEET_ID   = "YOUR_SHEET_ID_HERE";
-const SHEET_NAME = "Readings";
+// --- CONFIGURATION (REPLACE THESE) ---
+const BOT_TOKEN       = "YOUR_BOT_TOKEN_HERE"; 
+const SHEET_ID        = "YOUR_SHEET_ID_HERE";
+const GEMINI_API_KEY  = "YOUR_GEMINI_API_KEY_HERE";
+const ALLOWED_USER_ID = 123456789; // Your Numeric ID from @userinfobot
+const SHEET_NAME      = "Readings";
 
-const STATE_IDLE           = "IDLE";
-const STATE_WAIT_OPTION    = "WAIT_OPTION";
-const STATE_WAIT_NUMBER    = "WAIT_NUMBER";
-const STATE_WAIT_PHOTO     = "WAIT_PHOTO";
-const STATE_CONFIRM_VALUE  = "CONFIRM_VALUE";  // sanity check confirmation
-const STATE_CONFIRM_GAP    = "CONFIRM_GAP";    // gap warning confirmation
+// ─── States ──────────────────────────────────────────────────────────────────
+const STATE_IDLE             = "IDLE";
+const STATE_WAIT_OPTION      = "WAIT_OPTION";
+const STATE_WAIT_NUMBER      = "WAIT_NUMBER";
+const STATE_WAIT_PHOTO       = "WAIT_PHOTO";
+const STATE_WAIT_OCR_CONFIRM = "WAIT_OCR_CONFIRM";
+const STATE_WAIT_OCR_MANUAL  = "WAIT_OCR_MANUAL";
+const STATE_CONFIRM_VALUE    = "CONFIRM_VALUE";
+const STATE_CONFIRM_GAP      = "CONFIRM_GAP";
 
-const STATE_TIMEOUT_MS     = 10 * 60 * 1000;  // 10 minutes
-const DUPLICATE_WINDOW_MS  = 60 * 1000;        // 60 seconds
-const SANITY_THRESHOLD     = 500;              // warn if delta > 500 kWh from last
+const STATE_TIMEOUT_MS    = 10 * 60 * 1000;
+const DUPLICATE_WINDOW_MS = 60 * 1000;
+const SANITY_THRESHOLD    = 500;
+const KWH_MIN             = 10000; 
+const KWH_MAX             = 999999;
 
 // ─── Webhook entry point ──────────────────────────────────────────────────────
 
@@ -49,18 +46,24 @@ function handleUpdate(update) {
   if (!message) return;
 
   const chatId = String(message.chat.id);
+  const userId = message.from.id;
+
+  // --- SECURITY CHECK: Whitelist ---
+  if (userId !== ALLOWED_USER_ID) {
+    sendMessage(chatId, "🚫 Access Denied. This is a private bot.");
+    return;
+  }
+
   const state  = getState(chatId);
   const text   = message.text ? message.text.trim() : "";
 
   console.log("Chat: " + chatId + " | State: " + state + " | Text: " + text);
 
-  // --- Check state timeout ---
+  // --- State timeout ---
   if (state !== STATE_IDLE && isStateExpired(chatId)) {
     setState(chatId, STATE_IDLE);
     clearPending(chatId);
-    sendMessage(chatId,
-      "Your previous session timed out. Send /reading to start again."
-    );
+    sendMessage(chatId, "Your session timed out. Send /reading to start again.");
     return;
   }
 
@@ -74,7 +77,7 @@ function handleUpdate(update) {
     return;
   }
 
-  // --- Global commands (work from any state) ---
+  // --- Global commands ---
   if (text === "/cancel") {
     setState(chatId, STATE_IDLE);
     clearPending(chatId);
@@ -88,87 +91,39 @@ function handleUpdate(update) {
     sendMessage(chatId,
       "⚡ Electric Meter Tracker\n" +
       "━━━━━━━━━━━━━━━━━━━━\n" +
-      "Track your daily electricity usage by logging your meter reading twice a day — morning and evening.\n\n" +
-      "The bot automatically calculates:\n" +
-      "• Delta kWh (usage since last reading)\n" +
-      "• Daily total (full day usage)\n" +
-      "• Shift (Morning / Evening / Manual)\n\n" +
+      "Track your daily electricity usage by logging your meter reading twice a day.\n\n" +
       "Commands:\n" +
       "/reading — Log a new meter reading\n" +
       "/last — Show the last logged reading\n" +
       "/status — Show today's readings\n" +
-      "/cancel — Cancel current input\n" +
-      "/help — Show this message again"
+      "/cancel — Cancel current input"
     );
     return;
   }
 
-  if (text === "/help") {
-    sendMessage(chatId,
-      "⚡ Electric Meter Tracker — Help\n" +
-      "━━━━━━━━━━━━━━━━━━━━\n" +
-      "/reading — Log a new meter reading\n" +
-      "/last — Show the last logged reading\n" +
-      "/status — Show today's readings\n" +
-      "/cancel — Cancel current input\n\n" +
-      "When logging you can:\n" +
-      "1 — Type the kWh number manually\n" +
-      "2 — Upload a photo (OCR coming soon)\n\n" +
-      "Best reading times:\n" +
-      "• Morning: 6:00 AM – 10:00 AM\n" +
-      "• Evening: 6:00 PM – 10:00 PM"
-    );
-    return;
-  }
-
-  if (text === "/last") {
-    sendLastReading(chatId);
-    return;
-  }
-
-  if (text === "/status") {
-    sendTodayStatus(chatId);
-    return;
-  }
-
-  // --- /reading command ---
   if (text === "/reading") {
-    // Check for gap warning before starting
     const gapInfo = getGapInfo();
     if (gapInfo.hours > 24) {
       setPending(chatId, "gap_hours", gapInfo.hours.toFixed(1));
       setState(chatId, STATE_CONFIRM_GAP);
       sendMessage(chatId,
-        "Last reading was " + gapInfo.hours.toFixed(1) + " hours ago (" + gapInfo.lastDate + ").\n\n" +
-        "This will be flagged as a gap in the sheet.\n" +
-        "Continue anyway?\n\n" +
-        "yes — proceed\n" +
-        "no — cancel"
+        "Last reading was " + gapInfo.hours.toFixed(1) + " hours ago.\nContinue?\nyes / no"
       );
     } else {
       setState(chatId, STATE_WAIT_OPTION);
-      sendMessage(chatId,
-        "How would you like to enter the reading?\n\n" +
-        "1 — Type the number manually\n" +
-        "2 — Upload a photo of the meter"
-      );
+      sendMessage(chatId, "How would you like to log?\n1 — Manual\n2 — Photo");
     }
     return;
   }
 
-  // --- Conversation states ---
+  // Handle Conversation States
   if (state === STATE_CONFIRM_GAP) {
     if (text.toLowerCase() === "yes") {
       setState(chatId, STATE_WAIT_OPTION);
-      sendMessage(chatId,
-        "How would you like to enter the reading?\n\n" +
-        "1 — Type the number manually\n" +
-        "2 — Upload a photo of the meter"
-      );
+      sendMessage(chatId, "How would you like to log?\n1 — Manual\n2 — Photo");
     } else {
       setState(chatId, STATE_IDLE);
-      clearPending(chatId);
-      sendMessage(chatId, "Cancelled. Send /reading when you're ready.");
+      sendMessage(chatId, "Cancelled.");
     }
     return;
   }
@@ -176,295 +131,176 @@ function handleUpdate(update) {
   if (state === STATE_WAIT_OPTION) {
     if (text === "1") {
       setState(chatId, STATE_WAIT_NUMBER);
-      sendMessage(chatId, "Type the kWh reading (numbers only, e.g. 28504):");
+      sendMessage(chatId, "Type the kWh reading:");
     } else if (text === "2") {
       setState(chatId, STATE_WAIT_PHOTO);
       sendMessage(chatId, "Send a photo of the meter.");
-    } else {
-      sendMessage(chatId, "Please reply with 1 or 2.");
     }
     return;
   }
 
   if (state === STATE_WAIT_NUMBER) {
-    const cleaned = cleanInput(text);
-    const kwh     = parseFloat(cleaned);
+    const kwh = parseFloat(cleanInput(text));
     if (isNaN(kwh)) {
-      sendMessage(chatId,
-        "That doesn't look like a number.\n" +
-        "Please type the kWh reading (e.g. 28504):\n\n" +
-        "Send /cancel to abort."
-      );
+      sendMessage(chatId, "Invalid number. Try again:");
       return;
     }
+    checkAndLog(chatId, kwh, STATE_WAIT_NUMBER);
+    return;
+  }
 
-    // Sanity check
-    const lastRecord = getLastRecord();
-    if (lastRecord && Math.abs(kwh - lastRecord.kwh) > SANITY_THRESHOLD) {
-      setPending(chatId, "pending_kwh", kwh);
-      setState(chatId, STATE_CONFIRM_VALUE);
-      sendMessage(chatId,
-        "That value seems unusual.\n" +
-        "Last reading: " + lastRecord.kwh + " kWh\n" +
-        "You entered: " + kwh + " kWh\n" +
-        "Difference: " + Math.abs(kwh - lastRecord.kwh).toFixed(2) + " kWh\n\n" +
-        "Is this correct?\n" +
-        "yes — log it anyway\n" +
-        "no — re-enter the value"
-      );
-      return;
+  if (state === STATE_WAIT_OCR_CONFIRM) {
+    const pendingKwh = getPending(chatId, "pending_kwh");
+    if (text.toLowerCase() === "yes") {
+      handleManualReading(chatId, pendingKwh);
+    } else {
+      setState(chatId, STATE_WAIT_OCR_MANUAL);
+      sendMessage(chatId, "Please type the correct value:");
     }
+    return;
+  }
 
-    // Duplicate check
-    if (isDuplicate()) {
-      sendMessage(chatId,
-        "A reading was just logged less than 60 seconds ago.\n" +
-        "Are you sure you want to log another?\n\n" +
-        "yes — log it anyway\n" +
-        "no — cancel"
-      );
-      setPending(chatId, "pending_kwh", kwh);
-      setState(chatId, STATE_CONFIRM_VALUE);
-      return;
-    }
-
-    handleManualReading(chatId, kwh);
+  if (state === STATE_WAIT_OCR_MANUAL) {
+    const kwh = parseFloat(cleanInput(text));
+    if (!isNaN(kwh)) handleManualReading(chatId, kwh);
     return;
   }
 
   if (state === STATE_CONFIRM_VALUE) {
     const pendingKwh = getPending(chatId, "pending_kwh");
-    if (text.toLowerCase() === "yes" && pendingKwh !== null) {
-      handleManualReading(chatId, parseFloat(pendingKwh));
-    } else {
-      setState(chatId, STATE_WAIT_NUMBER);
-      clearPending(chatId);
-      sendMessage(chatId, "Please type the kWh reading again:");
-    }
+    if (text.toLowerCase() === "yes") handleManualReading(chatId, pendingKwh);
+    else setState(chatId, STATE_WAIT_NUMBER);
     return;
   }
 
-  // --- Fallback ---
   setState(chatId, STATE_IDLE);
-  sendMessage(chatId, "Send /reading to log a meter reading or /help for more info.");
+  sendMessage(chatId, "Send /reading to start.");
 }
 
-// ─── Reading handlers ─────────────────────────────────────────────────────────
+// ─── Handlers ─────────────────────────────────────────────────────────
 
-function handleManualReading(chatId, kwh) {
+function handlePhotoReceived(chatId, message) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const result = writeToSheet(kwh, "manual");
-    setState(chatId, STATE_IDLE);
-    clearPending(chatId);
-    sendMessage(chatId,
-      "Reading logged.\n" +
-      "Value: " + kwh + " kWh\n" +
-      "Shift: " + result.shift +
-      (result.delta !== 0 ? "\nDelta: " + result.delta + " kWh" : "") +
-      (result.dailyTotal !== null ? "\nDaily total: " + result.dailyTotal + " kWh" : "") +
-      (result.notes ? "\nNotes: " + result.notes : "")
-    );
+    sendMessage(chatId, "Reading meter digits...");
+    const fileId = message.photo[message.photo.length - 1].file_id;
+    const imageBlob = fetchTelegramFile(fileId);
+    
+    if (!imageBlob) {
+      setState(chatId, STATE_WAIT_OCR_MANUAL);
+      sendMessage(chatId, "Download failed. Type value manually:");
+      return;
+    }
+
+    const lastRecord = getLastRecord();
+    const ocrValue = performOcrOnBlob(imageBlob, lastRecord ? lastRecord.kwh : null);
+
+    if (ocrValue) {
+      setPending(chatId, "pending_kwh", ocrValue);
+      setPending(chatId, "pending_file_id", fileId);
+      setState(chatId, STATE_WAIT_OCR_CONFIRM);
+      sendMessage(chatId, "Detected: " + ocrValue + " kWh. Correct?\nyes / no");
+    } else {
+      setPending(chatId, "pending_file_id", fileId);
+      setState(chatId, STATE_WAIT_OCR_MANUAL);
+      sendMessage(chatId, "Could not read photo. Type value manually:");
+    }
   } finally {
     lock.releaseLock();
   }
 }
 
-function handlePhotoReceived(chatId, message) {
-  const fileId = message.photo[message.photo.length - 1].file_id;
-  console.log("Photo received, file_id: " + fileId + " — OCR not yet implemented.");
-
-  writeToSheet(null, "photo_placeholder:" + fileId);
+function handleManualReading(chatId, kwh) {
+  const result = writeToSheet(kwh, getPendingString(chatId, "pending_file_id") || "manual");
   setState(chatId, STATE_IDLE);
   clearPending(chatId);
-  sendMessage(chatId,
-    "Photo received and logged.\n" +
-    "OCR is not active yet — reading recorded as blank.\n\n" +
-    "Send /reading to log the value manually in the meantime."
-  );
+  sendMessage(chatId, "✅ Saved! Delta: " + result.delta + " kWh");
 }
 
-// ─── /last command ────────────────────────────────────────────────────────────
-
-function sendLastReading(chatId) {
-  const last = getLastRecord();
-  if (!last) {
-    sendMessage(chatId, "No readings logged yet.");
+function checkAndLog(chatId, kwh, returnState) {
+  const lastRecord = getLastRecord();
+  if (lastRecord && Math.abs(kwh - lastRecord.kwh) > SANITY_THRESHOLD) {
+    setPending(chatId, "pending_kwh", kwh);
+    setState(chatId, STATE_CONFIRM_VALUE);
+    sendMessage(chatId, "Unusual value (Δ" + Math.abs(kwh - lastRecord.kwh).toFixed(2) + "). Correct?\nyes / no");
     return;
   }
-  sendMessage(chatId,
-    "Last reading:\n" +
-    "Value: " + last.kwh + " kWh\n" +
-    "Time: " + Utilities.formatDate(last.timestamp, CONFIG.TIMEZONE, "MMM dd, yyyy HH:mm") + "\n" +
-    "Shift: " + last.shift
-  );
+  handleManualReading(chatId, kwh);
 }
 
-// ─── /status command ──────────────────────────────────────────────────────────
+// ─── OCR & Logic ──────────────────────────────────────────────────────
 
-function sendTodayStatus(chatId) {
-  const ss      = SpreadsheetApp.openById(SHEET_ID);
-  const sheet   = ss.getSheetByName(SHEET_NAME);
-  const colMap  = getColumnMapping(sheet);
-  const lastRow = sheet.getLastRow();
-
-  if (lastRow < 2) {
-    sendMessage(chatId, "No readings logged yet.");
-    return;
-  }
-
-  const today    = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, "yyyy-MM-dd");
-  const data     = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  const todayRows = data.filter(row => {
-    const ts = new Date(row[0]);
-    return Utilities.formatDate(ts, CONFIG.TIMEZONE, "yyyy-MM-dd") === today;
-  });
-
-  if (todayRows.length === 0) {
-    sendMessage(chatId, "No readings logged today yet.\nSend /reading to log one.");
-    return;
-  }
-
-  let msg = "Today's readings (" + today + "):\n━━━━━━━━━━━━━━━━━━━━\n";
-  todayRows.forEach((row, i) => {
-    const ts    = Utilities.formatDate(new Date(row[0]), CONFIG.TIMEZONE, "HH:mm");
-    const kwh   = row[colMap.Raw_kwh - 1] || "—";
-    const shift = row[colMap.Shift - 1]   || "—";
-    const delta = row[colMap.Delta_kwh - 1];
-    msg += (i + 1) + ". " + ts + " | " + kwh + " kWh | " + shift;
-    if (delta !== "" && delta !== 0) msg += " | Δ" + delta;
-    msg += "\n";
-  });
-
-  const dailyTotal = todayRows
-    .map(r => r[colMap.Daily_Total - 1])
-    .find(v => v !== "" && v !== null);
-  if (dailyTotal) msg += "\nDaily total: " + dailyTotal + " kWh";
-
-  sendMessage(chatId, msg);
+function performOcrOnBlob(imageBlob, lastKwh) {
+  const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=";
+  try {
+    const payload = {
+      contents: [{
+        parts: [{ text: "Extract the main kWh reading from this meter. Reply with numeric value only." },
+                { inline_data: { mime_type: "image/jpeg", data: Utilities.base64Encode(imageBlob.getBytes()) }}]
+      }]
+    };
+    const response = UrlFetchApp.fetch(GEMINI_URL + GEMINI_API_KEY, {
+      method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    const raw = JSON.parse(response.getContentText()).candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const val = parseFloat(raw.replace(/[^0-9.]/g, ""));
+    return (!isNaN(val) && (lastKwh === null || val >= lastKwh)) ? val : null;
+  } catch (e) { return null; }
 }
 
-// ─── Sheet writer ─────────────────────────────────────────────────────────────
+function fetchTelegramFile(fileId) {
+  const url = "https://api.telegram.org/bot" + BOT_TOKEN + "/getFile?file_id=" + fileId;
+  const path = JSON.parse(UrlFetchApp.fetch(url).getContentText()).result.file_path;
+  return UrlFetchApp.fetch("https://api.telegram.org/file/bot" + BOT_TOKEN + "/" + path).getBlob().setContentType("image/jpeg");
+}
 
 function writeToSheet(rawKwh, source) {
-  const ss        = SpreadsheetApp.openById(SHEET_ID);
-  const sheet     = ss.getSheetByName(SHEET_NAME);
-  const colMap    = getColumnMapping(sheet);
-  const timestamp = new Date();
-
-  const newRow = buildEmptyRow(sheet);
-  newRow[colMap.Timestamp - 1]   = timestamp;
-  newRow[colMap.Raw_kwh - 1]     = rawKwh !== null ? rawKwh : "";
-  newRow[colMap.Meter_Photo - 1] = source;
-  sheet.appendRow(newRow);
-
-  const appendedRow = sheet.getLastRow();
-  const prevData    = getPreviousRecord(sheet, appendedRow, colMap.Raw_kwh);
-  const result      = calculateReadingLogic(timestamp, rawKwh, prevData, sheet, appendedRow, colMap);
-  result.notes      = result.notes.trim();
-
-  updateSheetRow(sheet, appendedRow, colMap, result, rawKwh);
-  console.log("Row " + appendedRow + " written — " + rawKwh + " kWh / " + result.shift);
-  return result;
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  const colMap = getColumnMapping(sheet);
+  const ts = new Date();
+  sheet.appendRow([ts, rawKwh, source]);
+  const row = sheet.getLastRow();
+  const prev = getPreviousRecord(sheet, row, colMap.Raw_kwh);
+  const res = calculateReadingLogic(ts, rawKwh, prev, sheet, row, colMap);
+  updateSheetRow(sheet, row, colMap, res, rawKwh);
+  return res;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── State Helpers ────────────────────────────────────────────────────
 
-function getLastRecord() {
-  const ss      = SpreadsheetApp.openById(SHEET_ID);
-  const sheet   = ss.getSheetByName(SHEET_NAME);
-  const colMap  = getColumnMapping(sheet);
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
-
-  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  for (let i = data.length - 1; i >= 0; i--) {
-    const kwh = parseFloat(data[i][colMap.Raw_kwh - 1]);
-    if (!isNaN(kwh)) {
-      return {
-        kwh:       kwh,
-        timestamp: new Date(data[i][0]),
-        shift:     data[i][colMap.Shift - 1] || "—"
-      };
-    }
-  }
-  return null;
+function getState(chatId) { return PropertiesService.getScriptProperties().getProperty("state_" + chatId) || STATE_IDLE; }
+function setState(chatId, state) { 
+  PropertiesService.getScriptProperties().setProperty("state_" + chatId, state);
+  PropertiesService.getScriptProperties().setProperty("state_time_" + chatId, String(new Date().getTime()));
 }
-
+function isStateExpired(chatId) {
+  const t = parseInt(PropertiesService.getScriptProperties().getProperty("state_time_" + chatId) || "0");
+  return (new Date().getTime() - t) > STATE_TIMEOUT_MS;
+}
+function setPending(chatId, k, v) { PropertiesService.getScriptProperties().setProperty("pending_" + k + "_" + chatId, String(v)); }
+function getPending(chatId, k) { return parseFloat(PropertiesService.getScriptProperties().getProperty("pending_" + k + "_" + chatId)); }
+function getPendingString(chatId, k) { return PropertiesService.getScriptProperties().getProperty("pending_" + k + "_" + chatId); }
+function clearPending(chatId) {
+  const p = PropertiesService.getScriptProperties();
+  ["pending_kwh_", "pending_file_id_", "state_time_"].forEach(k => p.deleteProperty(k + chatId));
+}
+function sendMessage(chatId, text) {
+  UrlFetchApp.fetch("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage", {
+    method: "post", contentType: "application/json", payload: JSON.stringify({ chat_id: chatId, text: text })
+  });
+}
+function cleanInput(t) { return t.replace(/[Oo]/g, "0").replace(/l/g, "1").replace(/,/g, "."); }
 function getGapInfo() {
   const last = getLastRecord();
-  if (!last) return { hours: 0, lastDate: "never" };
-  const hours    = (new Date() - last.timestamp) / (1000 * 60 * 60);
-  const lastDate = Utilities.formatDate(last.timestamp, CONFIG.TIMEZONE, "MMM dd HH:mm");
-  return { hours, lastDate };
+  return last ? { hours: (new Date() - last.timestamp)/3600000 } : { hours: 0 };
 }
-
-function isDuplicate() {
-  const last = getLastRecord();
-  if (!last) return false;
-  return (new Date() - last.timestamp) < DUPLICATE_WINDOW_MS;
-}
-
-function cleanInput(text) {
-  // Fix common OCR-style typos: letter O → 0, lowercase l → 1, comma → period
-  return text.replace(/[Oo]/g, "0").replace(/l/g, "1").replace(/,/g, ".");
-}
-
-// ─── State management ─────────────────────────────────────────────────────────
-
-function getState(chatId) {
-  return PropertiesService.getScriptProperties()
-    .getProperty("state_" + chatId) || STATE_IDLE;
-}
-
-function setState(chatId, state) {
-  const props = PropertiesService.getScriptProperties();
-  props.setProperty("state_" + chatId, state);
-  props.setProperty("state_time_" + chatId, String(new Date().getTime()));
-}
-
-function isStateExpired(chatId) {
-  const props    = PropertiesService.getScriptProperties();
-  const stateTime = parseInt(props.getProperty("state_time_" + chatId) || "0");
-  return (new Date().getTime() - stateTime) > STATE_TIMEOUT_MS;
-}
-
-function setPending(chatId, key, value) {
-  PropertiesService.getScriptProperties()
-    .setProperty("pending_" + key + "_" + chatId, String(value));
-}
-
-function getPending(chatId, key) {
-  const val = PropertiesService.getScriptProperties()
-    .getProperty("pending_" + key + "_" + chatId);
-  return val !== null ? parseFloat(val) : null;
-}
-
-function clearPending(chatId) {
-  const props = PropertiesService.getScriptProperties();
-  props.deleteProperty("pending_kwh_" + chatId);
-  props.deleteProperty("pending_gap_hours_" + chatId);
-  props.deleteProperty("state_time_" + chatId);
-}
-
-// ─── Telegram helpers ─────────────────────────────────────────────────────────
-
-function sendMessage(chatId, text) {
-  try {
-    UrlFetchApp.fetch("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage", {
-      method: "post",
-      contentType: "application/json",
-      payload: JSON.stringify({ chat_id: chatId, text: text }),
-      muteHttpExceptions: true
-    });
-  } catch (err) {
-    console.error("sendMessage error: " + err.toString());
+function getLastRecord() {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const data = sheet.getDataRange().getValues();
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (!isNaN(parseFloat(data[i][1]))) return { kwh: data[i][1], timestamp: new Date(data[i][0]) };
   }
-}
-
-// ─── Sheet helpers ────────────────────────────────────────────────────────────
-
-function buildEmptyRow(sheet) {
-  return new Array(Math.max(sheet.getLastColumn(), 7)).fill("");
+  return null;
 }
