@@ -68,7 +68,7 @@ function handleUpdate(update) {
 
   console.log("Chat: " + chatId + " | State: " + state + " | Text: " + text);
 
-  // Auto-register this chat ID for reminders (Owner only)
+  // Auto-register this chat ID for reminders
   registerChatId(chatId);
 
   // --- State timeout ---
@@ -101,7 +101,7 @@ function handleUpdate(update) {
     setState(chatId, STATE_IDLE);
     clearPending(chatId);
     sendMessage(chatId,
-      "Electric Meter Tracker\n" +
+      "⚡ Electric Meter Tracker\n" +
       "━━━━━━━━━━━━━━━━━━━━\n" +
       "Track your daily electricity usage by logging your meter reading twice a day — morning and evening.\n\n" +
       "The bot automatically calculates:\n" +
@@ -112,6 +112,10 @@ function handleUpdate(update) {
       "/reading — Log a new meter reading\n" +
       "/last — Show the last logged reading\n" +
       "/status — Show today's readings\n" +
+      "/bill — Estimated bill for this billing cycle\n" +
+      "/compare — This week vs last week usage\n" +
+      "/setrate [amount] — Update kWh rate (e.g. /setrate 11.50)\n" +
+      "/getrate — Show current kWh rate\n" +
       "/cancel — Cancel current input\n" +
       "/help — Show this message again"
     );
@@ -120,11 +124,13 @@ function handleUpdate(update) {
 
   if (text === "/help") {
     sendMessage(chatId,
-      "Electric Meter Tracker — Help\n" +
+      "⚡ Electric Meter Tracker — Help\n" +
       "━━━━━━━━━━━━━━━━━━━━\n" +
       "/reading — Log a new meter reading\n" +
       "/last — Show the last logged reading\n" +
       "/status — Show today's readings\n" +
+      "/bill — Estimated bill for this billing cycle\n" +
+      "/compare — This week vs last week usage\n" +
       "/cancel — Cancel current input\n\n" +
       "When logging you can:\n" +
       "1 — Type the kWh number manually\n" +
@@ -143,6 +149,39 @@ function handleUpdate(update) {
 
   if (text === "/status") {
     sendTodayStatus(chatId);
+    return;
+  }
+
+  if (text === "/bill") {
+    getBillEstimate(chatId);
+    return;
+  }
+
+  if (text === "/compare") {
+    getWeeklyComparison(chatId);
+    return;
+  }
+
+  if (text.startsWith("/setrate")) {
+    const parts   = text.split(" ");
+    const rate    = parseFloat(parts[1]);
+    if (isNaN(rate) || rate <= 0) {
+      sendMessage(chatId, "Invalid rate. Usage: /setrate 11.50");
+    } else {
+      const oldRate = getKwhRate();
+      setKwhRate(rate);
+      sendMessage(chatId,
+        "Rate updated.\n" +
+        "Previous: ₱" + oldRate.toFixed(2) + "/kWh\n" +
+        "New: ₱" + rate.toFixed(2) + "/kWh"
+      );
+    }
+    return;
+  }
+
+  if (text === "/getrate") {
+    const rate = getKwhRate();
+    sendMessage(chatId, "Current rate: ₱" + rate.toFixed(2) + "/kWh\n\nTo update: /setrate 11.50");
     return;
   }
 

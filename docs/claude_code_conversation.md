@@ -1,16 +1,16 @@
-# Electric Meter Tracker — Full Context v4
+# Electric Meter Tracker — Full Context v5
 
 ## Project Overview
 
-A personal electric meter tracker that logs kWh readings into a Google Sheet twice a day (morning and evening). The system calculates delta kWh, daily totals, and shift labels automatically via Google Apps Script. The intake method is a Telegram bot with Gemini Vision OCR and proactive reminders.
+A personal electric meter tracker that logs kWh readings into a Google Sheet twice a day (morning and evening). The system calculates delta kWh, daily totals, and shift labels automatically via Google Apps Script. The intake method is a Telegram bot with Gemini Vision OCR, proactive reminders, and reporting features.
 
 ---
 
 ## Current Architecture
 
 ```
-Apps Script Time Triggers (8AM / 8PM / every 15 min)
-    → reminders.gs → Telegram (proactive messages)
+Apps Script Time Triggers (8AM / 8PM / 9PM / 10PM / every 15 min / Sunday 8AM)
+    → reminders.gs + features.gs → Telegram (proactive messages)
 
 User (Telegram)
     → Cloudflare Worker (meter-proxy.sorallocarlos17.workers.dev)
@@ -23,7 +23,7 @@ User (Telegram)
 
 ## Google Sheet
 
-**Sheet ID:** `YOUR_SHEET_ID_HERE`
+**Sheet ID:** `1gv9MYmf0p-dw2X5j0J0wViug8VOrujZFyM2HldfISN0`
 **Tab name:** `Readings`
 
 **Columns:**
@@ -42,7 +42,7 @@ User (Telegram)
 
 ## Apps Script Project
 
-Three files in the same Apps Script project.
+Four files in the same Apps Script project.
 
 ### tracker.gs — Core calculation logic
 
@@ -72,16 +72,12 @@ Functions:
 **Constants:**
 ```javascript
 const BOT_TOKEN      = "YOUR_BOT_TOKEN";
-const SHEET_ID       = "YOUR_SHEET_ID_HERE";
+const SHEET_ID       = "1gv9MYmf0p-dw2X5j0J0wViug8VOrujZFyM2HldfISN0";
 const SHEET_NAME     = "Readings";
 const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY";
 const GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=";
-```
-
-**OCR constants:**
-```javascript
-const KWH_MIN = 10000;   // realistic lower bound for this MERALCO meter
-const KWH_MAX = 999999;  // realistic upper bound
+const KWH_MIN        = 10000;
+const KWH_MAX        = 999999;
 ```
 
 **Conversation states (stored in PropertiesService):**
@@ -100,6 +96,10 @@ const KWH_MAX = 999999;  // realistic upper bound
 - `/reading` — starts the logging flow
 - `/last` — shows the last logged reading (value, time, shift)
 - `/status` — shows all readings logged today with deltas
+- `/bill` — estimated bill for current billing cycle
+- `/compare` — this week vs last week usage comparison
+- `/setrate [amount]` — update kWh rate (e.g. `/setrate 11.50`)
+- `/getrate` — show current kWh rate
 - `/cancel` — cancels current input from any state
 
 **Conversation flow:**
@@ -124,54 +124,89 @@ Option 2 — Photo:
 ```
 
 **Safety guards:**
-- State timeout: 10 minutes — expired state resets to IDLE
-- Duplicate guard: warns if reading logged within 60 seconds
-- Write lock: `LockService.getScriptLock()` prevents concurrent writes
-- Sanity check: warns if new value differs >500 kWh from last reading
+- State timeout: 10 minutes
+- Duplicate guard: warns if reading within 60 seconds
+- Write lock: `LockService.getScriptLock()`
+- Sanity check: warns if new value differs >500 kWh from last
 - Gap warning: warns if >24 hours since last reading
-- Input cleaning: fixes O→0, l→1, comma→period typos
+- Input cleaning: fixes O→0, l→1, comma→period
 
 **Chat ID registration:**
-- Every user who interacts with the bot is auto-registered via `registerChatId(chatId)`
-- Called at the top of `handleUpdate()` on every message
-- Stored in PropertiesService under key `reminder_chat_ids` as a JSON array
+- `registerChatId(chatId)` called at top of `handleUpdate()` on every message
+- Stored in PropertiesService under `reminder_chat_ids` as JSON array
 
 ### reminders.gs — Time-based reminder system
 
-**Constants:**
-```javascript
-const REMINDER_CHAT_IDS_KEY = "reminder_chat_ids";
-const REMINDER_SENT_KEY     = "reminder_sent_time";
-const NUDGE_SENT_KEY        = "nudge_sent_time";
-```
+**Triggers (created by `setupTriggers()`):**
+- `sendMorningReminder` — daily at 8:00 AM Asia/Manila
+- `sendEveningReminder` — daily at 8:00 PM Asia/Manila
+- `checkNudge` — every 15 minutes
 
-**Triggers (created by running `setupTriggers()` once):**
-- `sendMorningReminder` — fires daily at 8:00 AM Asia/Manila
-- `sendEveningReminder` — fires daily at 8:00 PM Asia/Manila
-- `checkNudge` — fires every 15 minutes
-
-**Reminder flow:**
-1. `sendMorningReminder` or `sendEveningReminder` fires
-2. Sends message to all registered chat IDs
-3. Stores `reminder_sent_time` in PropertiesService
-4. 15 minutes later, `checkNudge` fires
-5. If no reading logged since reminder → sends nudge to all users
-6. If reading was logged → clears flag silently, no nudge
+**Flow:**
+1. Reminder fires → sends to all registered chat IDs → stores `reminder_sent_time`
+2. 15 min later `checkNudge` fires → if no reading logged since reminder → sends nudge
+3. If reading was logged → clears flag silently
 
 **Key functions:**
-- `setupTriggers()` — creates all three triggers, deletes existing ones first to prevent duplicates. **Run once manually.**
-- `sendMorningReminder()` — broadcasts morning message
-- `sendEveningReminder()` — broadcasts evening message
-- `sendReminderToAll(message)` — sends to all registered users, sets reminder flag
-- `checkNudge()` — checks if nudge needed, sends if 15–30 min window and no reading logged
-- `registerChatId(chatId)` — adds chat ID to registry if not already present
-- `getRegisteredChatIds()` — returns array of all registered chat IDs
+- `setupTriggers()` — creates all triggers, deletes existing first. **Run once manually.**
+- `sendMorningReminder()` / `sendEveningReminder()` — broadcast reminder messages
+- `sendReminderToAll(message)` — sends to all users, sets reminder flag
+- `checkNudge()` — 15–30 min window check, sends nudge if no reading logged
+- `registerChatId(chatId)` — adds to registry if not present
+- `getRegisteredChatIds()` — returns array of all chat IDs
+- `broadcastToAll(message)` — sends message to all registered users
 
-**Test functions (temporary, remove after testing):**
+### features.gs — Reporting and analytics
+
+**Constants:**
 ```javascript
-function testReminder()        // sends morning reminder immediately
-function testNudge()           // simulates 16 min elapsed, fires nudge check
-function testRegisteredUsers() // logs all registered chat IDs
+const BILLING_CYCLE_DAY = 14;   // day of month billing cycle starts
+const DEFAULT_KWH_RATE  = 11.0; // fallback if no rate set via /setrate
+```
+
+**Rate management (stored in PropertiesService):**
+- `getKwhRate()` — returns stored rate or DEFAULT_KWH_RATE
+- `setKwhRate(rate)` — stores rate in PropertiesService
+- Updated via `/setrate` command — no code changes needed when rate changes
+
+**Triggers (created by `addFeatureTriggers()`):**
+- `sendDailySummary` — daily at 9:00 PM Asia/Manila
+- `sendWeeklyReport` — every Sunday at 8:00 AM Asia/Manila
+- `checkAnomaly` — daily at 10:00 PM Asia/Manila
+
+**Features:**
+
+`/bill` — Estimated bill for current billing cycle:
+- Finds billing cycle start based on `BILLING_CYCLE_DAY`
+- Sums all `Daily_Total` values from Morning rows within the cycle
+- Shows: usage so far, rate, est. bill so far, avg daily, projected full bill, days remaining
+
+`/compare` — Weekly comparison:
+- Compares this week (Mon→today) vs last full week
+- Shows kWh and ₱ cost for each, difference and percentage
+
+Daily summary (9PM auto):
+- Shows today's reading count and daily total
+- If no readings logged, sends a reminder to log before midnight
+
+Weekly report (Sunday 8AM auto):
+- Lists each day's usage and cost for the past 7 days
+- Shows total, average per day, estimated cost
+
+Anomaly alert (10PM auto):
+- Compares today's daily total against 7-day average
+- Alerts if today is ≥50% above the average
+- Requires at least 3 days of history to fire
+
+**Trigger setup:** Run `addFeatureTriggers()` once manually. Run `setupTriggers()` separately for reminders — they are independent functions.
+
+**Test functions:**
+```javascript
+function testBillEstimate()      // sends /bill result to Telegram immediately
+function testWeeklyComparison()  // sends /compare result immediately
+function testDailySummary()      // sends daily summary immediately
+function testWeeklyReport()      // sends weekly report immediately
+function testAnomalyCheck()      // runs anomaly check immediately
 ```
 
 ---
@@ -179,35 +214,27 @@ function testRegisteredUsers() // logs all registered chat IDs
 ## Gemini Vision OCR
 
 **Model:** `gemini-2.5-flash`
-**Method:** Image sent as base64 inline_data in the request body
-**Prompt:** Asks Gemini to look at the main large number on the LCD display and return only the numeric kWh reading
+**Method:** Image sent as base64 `inline_data` in request body
+**Prompt:** Ask Gemini for the main large number on the LCD display, return only the numeric kWh reading
 
-**Smart extraction logic:**
-- Gemini returns the number directly as plain text
-- Response cleaned with `/[^0-9.]/g` to strip non-numeric characters
-- Sanity check: discards if value < last recorded reading (meter never goes backward)
+**Extraction:**
+- Response cleaned with `/[^0-9.]/g`
+- Discarded if value < last recorded reading
 
-**Why Gemini instead of Drive OCR:**
-- Drive API v2 `Files.insert` with OCR consistently failed due to MIME type corruption
-- Blobs typed as `image/jpeg` were rejected with "OCR is not supported for files of type application/vnd.google-apps.document"
-- Gemini accepts base64 image bytes directly — no Drive insert, no MIME type issues
-- Gemini 2.5 Flash correctly identified `27826` from a real MERALCO meter photo on first try
+**Why Gemini:** Drive API v2 OCR consistently failed with MIME type corruption. Gemini accepts base64 directly — confirmed reading `27826` from real MERALCO meter photo on first try.
 
-**Model selection:**
-- `gemini-2.0-flash` → 429 quota error (limit: 0 on free tier)
+**Model selection history:**
+- `gemini-2.0-flash` → 429 quota error
 - `gemini-1.5-flash-latest` → 404 not found
-- `gemini-2.5-flash` → works, confirmed via `ListModels`
-
-**Free tier:** Google AI Studio — no credit card required
+- `gemini-2.5-flash` → confirmed working via `ListModels`
 
 ---
 
 ## Cloudflare Worker
 
 **URL:** `https://meter-proxy.sorallocarlos17.workers.dev`
-**Purpose:** Proxies Telegram webhook POSTs to Apps Script, following Google's 302/307 redirects internally so Telegram gets a clean 200 OK back.
 
-**Why it's needed:** Google Apps Script Web Apps redirect unauthenticated POST requests. Telegram doesn't follow redirects — infinite retry loop results. The Worker returns 200 to Telegram immediately, then follows the redirect internally.
+**Why needed:** Apps Script redirects unauthenticated POST requests (302/307). Telegram doesn't follow redirects → infinite retry loop. Worker returns 200 to Telegram immediately, follows redirect internally.
 
 **Worker code:**
 ```javascript
@@ -229,105 +256,87 @@ export default {
 };
 ```
 
-**Important:** Every time a new Apps Script deployment is created, the Worker's `APPS_SCRIPT_URL` must be updated and redeployed.
-
 ---
 
-## Telegram Bot Setup
+## Telegram Bot Commands
 
-**Registered commands** (set via `setMyCommands`):
-- `reading` — Log a new meter reading
-- `help` — How to use this bot
+**Registered via `setMyCommands`:**
+```
+reading   — Log a new meter reading
+last      — Show last reading
+status    — Today's readings
+bill      — Estimated bill this cycle
+compare   — This week vs last week
+help      — How to use this bot
+```
 
-**Webhook registration:**
+**Note:** `/setrate` and `/getrate` work as commands but are not in the menu since they're used infrequently.
+
+**Webhook:**
 ```
 https://api.telegram.org/botTOKEN/setWebhook?url=https://meter-proxy.sorallocarlos17.workers.dev&drop_pending_updates=true
 ```
 
-**Useful Telegram API URLs:**
-```
-# Check webhook status
-https://api.telegram.org/botTOKEN/getWebhookInfo
-
-# Delete webhook + clear queue
-https://api.telegram.org/botTOKEN/deleteWebhook?drop_pending_updates=true
-
-# Get chat ID
-https://api.telegram.org/botTOKEN/getUpdates
-
-# Register command menu
-https://api.telegram.org/botTOKEN/setMyCommands?commands=[{"command":"reading","description":"Log a new meter reading"},{"command":"help","description":"How to use this bot"}]
-```
-
 ---
 
-## Deployment Process (every code change)
+## Deployment Process
 
 1. Edit code in Apps Script
-2. **Deploy → New deployment → Web app**
-   - Execute as: Me
-   - Who has access: Anyone
-3. Copy the new deployment URL
-4. Update `APPS_SCRIPT_URL` in the Cloudflare Worker
-5. Click **Save and deploy** in Cloudflare
-6. Re-register webhook with `drop_pending_updates=true` if needed
+2. **Deploy → New deployment → Web app** (Execute as: Me, Who has access: Anyone)
+3. Copy new URL → update Cloudflare Worker `APPS_SCRIPT_URL` → Save and deploy
+4. Re-register webhook if needed
 
-**Note:** Editing an existing deployment does NOT update the live URL — always create a **new deployment**. Time-based triggers (`setupTriggers`) do NOT need redeployment — they call functions directly, not via the Web App URL.
+**Time-based triggers do NOT need redeployment** — they call functions directly.
 
 ---
 
-## Issues Encountered and Resolved
+## All Issues Encountered and Resolved
 
-### 302/307 redirect loop
-Telegram retried forever because Apps Script redirected unauthenticated POSTs. Fixed with Cloudflare Worker proxy.
-
-### Infinite reply loop
-Bot kept sending the same message repeatedly. Fix: `ContentService.createTextOutput("OK")` must be created at the very top of `doPost` and always returned.
-
-### Drive OCR MIME type corruption (never resolved — switched to Gemini)
-`DriveApp.getFileById().getBlob()` and `UrlFetchApp` blobs typed as `image/jpeg` were consistently rejected by `Drive.Files.insert`. Multiple fixes attempted — none worked. Switched to Gemini Vision API.
-
-### Gemini model not found / quota errors
-`gemini-2.0-flash` → 429, `gemini-1.5-flash-latest` → 404. Fixed by calling `ListModels` — `gemini-2.5-flash` confirmed working.
-
-### OCR discarding correct reading
-Gemini read `27826` correctly but it was discarded because test data in sheet had `27829`. Fixed by cleaning up test rows.
-
-### Column mapping conflicts
-- `delta_kwh` matched by generic `kwh` catch-all — fixed by checking `delta_kwh` first
-- `Image_Url` matched `head.includes("image")` overwriting `Meter_Photo` — fixed by matching only `head.includes("photo")`
+| Issue | Resolution |
+|-------|-----------|
+| 302/307 redirect loop | Cloudflare Worker proxy |
+| Infinite Telegram retry loop | `ContentService.createTextOutput("OK")` at top of `doPost` |
+| Drive OCR MIME type corruption | Switched to Gemini Vision API |
+| Gemini model 404/429 errors | Used `ListModels` — confirmed `gemini-2.5-flash` |
+| OCR discarding correct reading | Cleaned up test rows with values above real meter |
+| Column mapping conflicts | Explicit checks before generic catch-alls |
+| `/bill` returning no data | Expected — needs Morning rows with Daily_Total in billing cycle |
 
 ---
 
 ## Meter Details
 
-**Type:** GE MERALCO electric meter (Made in Philippines by GEPMICI)
-**Display:** LCD with amber/gold background, dark digits
-**Main reading:** 5-digit number (e.g. 27826) — top row, largest digits
-**Secondary reading:** 3-digit number below (e.g. 206) — ignored
-**Serial:** 113BAG054804
-**Realistic kWh range:** 10,000 – 999,999
+**Type:** GE MERALCO (GEPMICI, Made in Philippines)
+**Display:** LCD, amber/gold background, dark digits
+**Main reading:** 5-digit number, top row (e.g. 27826)
+**Secondary:** 3-digit number below (e.g. 206) — ignored
+**kWh range:** 10,000 – 999,999
+**Billing cycle:** starts on the 14th of each month
 
 ---
 
 ## Current Status
 
-- Cloudflare Worker: deployed and verified ✅
-- Telegram bot: all commands working ✅
-- Manual input (option 1): fully working ✅
-- Photo input (option 2) with Gemini OCR: fully working ✅
-- OCR confirmation + manual fallback: working ✅
-- All safety guards: working ✅
-- Sheet population: confirmed correct for all columns ✅
-- Reminders at 8AM and 8PM: implemented ✅
-- 15-minute nudge if no reading logged: implemented ✅
-- Auto-registration of chat IDs for reminders: implemented ✅
+| Feature | Status |
+|---------|--------|
+| Cloudflare Worker | ✅ deployed |
+| Telegram bot commands | ✅ all working |
+| Manual input | ✅ working |
+| Photo + Gemini OCR | ✅ working |
+| OCR confirm + manual fallback | ✅ working |
+| Safety guards | ✅ working |
+| 8AM/8PM reminders | ✅ implemented |
+| 15-min nudge | ✅ implemented |
+| /bill command | ✅ implemented (needs real data) |
+| /compare command | ✅ implemented |
+| /setrate + /getrate | ✅ implemented |
+| Daily summary (9PM) | ✅ implemented |
+| Weekly report (Sunday) | ✅ implemented |
+| Anomaly alert (10PM) | ✅ implemented |
 
-## Next Steps (optional features)
+## Possible Future Features
 
-- Monthly bill estimate (`/bill` command) — based on daily totals × rate per kWh
-- Daily summary — auto-sent at 10PM with the day's total
-- Weekly report — sent every Sunday with 7-day breakdown
-- `/compare` command — this week vs last week
-- Anomaly alert — warns if usage significantly above 7-day average
-- Dashboard — Google Sheets dashboard tab with charts
+- Dashboard — Google Sheets tab with charts
+- `/history [days]` — show last N days of readings
+- Cost projection graph
+- Export to PDF monthly report
