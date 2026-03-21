@@ -1,21 +1,16 @@
-# Project Backlog: Electric Meter Tracker
+# Project Backlog: Electric Meter Tracker (v2)
 
-## Phase 1: Foundation & Data Schema
-- [x] Define Google Sheet columns (Raw vs. Calculated).
-- [x] Create Google Form fields for kWh entry/photo upload.
-- [x] Initialize `Code.gs` with basic `onFormSubmit` trigger.
+## Phase 1: State Machine & Bot Flow (Completed)
+- [x] Implement `/start`, `/help`, and `/reading` commands.
+- [x] Implement `PropertiesService` state tracking (IDLE, WAIT_NUMBER, etc.).
+- [x] Implement Cloudflare-safe `doPost` with early `ContentService` return.
+- [x] Implement refined `Morning`/`Evening` shift logic.
 
-## Phase 2: Core Logic (GAS)
-- [x] Implement `calculateDelta` function.
-- [x] Categorize shifts (Day: 8AM-8PM, Night: 8PM-8AM).
-- [x] Implement timezone handling (`Asia/Manila`).
-- [x] Add basic anomaly detection (e.g., negative delta or skipped readings).
+## Phase 2: OCR Implementation (Next Step)
+- [ ] Implement `handlePhotoReceived()` with Drive OCR.
+- [ ] Replace `photo_placeholder` with actual extracted value.
+- [ ] Implement image blob MIME type fix (`.setContentType("image/jpeg")`).
 
-## Phase 3: Advanced Features & OCR
-- [ ] Integrate Google Drive OCR for kWh extraction.
-- [ ] Implement skipped-reading detection (Gap Analysis).
-- [ ] Implement daily budget alerting.
-
-## Phase 4: Visualization
+## Phase 3: Visualization
 - [ ] Connect Google Sheet to Looker Studio.
-- [ ] Design the dashboard (Daily vs. Nightly trends).
+- [ ] Design "Day vs. Night" trend charts.

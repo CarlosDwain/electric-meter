@@ -1,14 +1,19 @@
-# System Architecture (Cloudflare Proxy Edition)
+# System Architecture (v2 State-Managed)
 
 ## Data Flow Diagram
-1.  **User Action:** User sends Photo/Text to Telegram Bot.
-2.  **Proxy (Cloudflare Worker):**
-    *   Receives the Telegram Webhook.
-    *   Immediately returns `200 OK` to Telegram to prevent retry loops.
-    *   Forwards the data to the Google Apps Script Web App URL, following the `302` redirect.
-3.  **Backend (GAS):** Processes OCR and calculates logic.
-4.  **Storage:** Writes to Google Sheets.
-5.  **Feedback:** Bot replies via Telegram API.
+1.  **User Action:** User interacts with the Bot via commands (`/reading`) or messages.
+2.  **Proxy:** Cloudflare Worker forwards the request to GAS and immediately returns `200 OK`.
+3.  **State Management:**
+    *   `PropertiesService` tracks the user's conversation state (e.g., `WAIT_NUMBER`).
+    *   This allows the bot to ask "How would you like to log?" and remember the answer.
+4.  **Processing (GAS):**
+    *   **Manual:** Numbers are parsed and saved.
+    *   **Photo:** Currently saves a placeholder `file_id` (OCR implementation is the next step).
+5.  **Storage:** Appends to the **"Readings"** Google Sheet.
+6.  **Feedback:** Bot provides a formatted summary of the saved reading.
 
-## Why the Proxy?
-Google Apps Script redirects unauthenticated `POST` requests. Telegram does not follow these redirects and treats them as failures, causing infinite loops. The Cloudflare Worker acts as a server-side client that follows the redirect and handles the communication gracefully.
+## State Definitions
+- `IDLE`: Default state.
+- `WAIT_OPTION`: User just sent `/reading`, bot is waiting for "1" or "2".
+- `WAIT_NUMBER`: User chose manual entry, bot is waiting for digits.
+- `WAIT_PHOTO`: User chose photo, bot is waiting for upload.
