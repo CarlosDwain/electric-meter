@@ -2,8 +2,9 @@
 
 | Component | Technology | Reasoning |
 | :--- | :--- | :--- |
-| **Frontend** | Google Forms / AppSheet | Rapid deployment, native mobile feel, free. |
-| **Backend** | Google Apps Script (GAS) | Serverless, free, triggers on form submission. |
-| **Database** | Google Sheets | Easy to audit, free, handles time-series data. |
-| **OCR Engine** | Google Drive API | Built-in high-accuracy OCR for image-to-text. |
-| **BI / Analytics**| Looker Studio | Industry-standard visualization, native Sheets integration. |
+| **Interface** | **Telegram Bot** | Fastest input method. Snap a photo, send, done. |
+| **Proxy** | **Cloudflare Worker**| Prevents Google Apps Script redirect loops. Highly reliable. |
+| **Backend** | Google Apps Script (GAS) | Processes OCR and business logic. |
+| **Database** | Google Sheets | Easy to audit, free, time-series storage. |
+| **OCR Engine** | Google Drive API | Built-in high-accuracy OCR. |
+| **Visualization**| Looker Studio | Dashboarding and trends analysis. |

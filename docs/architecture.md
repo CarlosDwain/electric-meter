@@ -1,22 +1,14 @@
-# System Architecture
+# System Architecture (Cloudflare Proxy Edition)
 
 ## Data Flow Diagram
-1. **Trigger:** User submits kWh via Google Form (Mobile).
-2. **Ingestion:** Data is appended to a "Raw" Google Sheet.
-3. **Compute (GAS):**
-   - Check timestamp (Is it ~8 AM or ~8 PM?).
-   - Query the previous row's `Raw_kwh`.
-   - Calculate `delta = current - previous`.
-   - Categorize as `Day_Shift` or `Night_Shift`.
-4. **Storage:** Update the "Calculated" sheet columns.
-5. **Visualization:** Looker Studio fetches the updated Sheet and refreshes the UI.
+1.  **User Action:** User sends Photo/Text to Telegram Bot.
+2.  **Proxy (Cloudflare Worker):**
+    *   Receives the Telegram Webhook.
+    *   Immediately returns `200 OK` to Telegram to prevent retry loops.
+    *   Forwards the data to the Google Apps Script Web App URL, following the `302` redirect.
+3.  **Backend (GAS):** Processes OCR and calculates logic.
+4.  **Storage:** Writes to Google Sheets.
+5.  **Feedback:** Bot replies via Telegram API.
 
-## Logic Logic (Pseudo-code)
-```javascript
-if (Hour >= 07 && Hour <= 09) {
-  Period = "AM";
-  Daily_Total = Current - Yesterday_AM;
-} else if (Hour >= 19 && Hour <= 21) {
-  Period = "PM";
-  Day_Consumption = Current - Today_AM;
-}
+## Why the Proxy?
+Google Apps Script redirects unauthenticated `POST` requests. Telegram does not follow these redirects and treats them as failures, causing infinite loops. The Cloudflare Worker acts as a server-side client that follows the redirect and handles the communication gracefully.
