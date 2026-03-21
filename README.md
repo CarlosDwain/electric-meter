@@ -1,33 +1,34 @@
-# Electric Meter Tracker
+# Electric Meter Tracker (Telegram Edition)
 
-An automated, zero-cost system for tracking and analyzing electricity consumption (kWh) using Google Workspace.
+An automated, zero-cost system for tracking and analyzing electricity consumption (kWh) using a **Telegram Bot** and Google Workspace.
 
-## Overview
-This project differentiates between **Daytime (8 AM – 8 PM)** and **Nighttime (8 PM – 8 AM)** energy usage to provide insights into household energy costs (e.g., aircon vs. appliance usage).
+## 📊 Overview
+This project differentiates between **Daytime (8 AM – 8 PM)** and **Nighttime (8 PM – 8 AM)** energy usage. Simply snap a photo of your meter and send it to your private Telegram Bot; the system does the rest.
 
-## Features
-- **Automated Calculations:** Calculates consumption (delta) and categorizes shifts automatically on form submission.
-- **Smart Gap Analysis:** Detects missed readings (e.g., during travel) and flags them as gaps rather than single shifts.
-- **OCR Integration (In Progress):** Extract kWh digits directly from photos of your meter.
-- **Visual Dashboard:** Real-time visualization using Looker Studio.
+## 🚀 Features
+- **Telegram Interface:** No forms or apps needed. Just chat with your bot.
+- **Automated OCR:** Automatically extracts digits from your meter photos using Google Drive OCR.
+- **Smart Gap Analysis:** Detects missed readings (e.g., during travel) and flags them automatically.
+- **Security:** Whitelisted to only respond to your specific Telegram User ID.
+- **Visual Dashboard:** Real-time trends and budget tracking via Looker Studio.
 
-## Tech Stack
-- **Frontend:** Google Forms / AppSheet
-- **Backend:** Google Apps Script (GAS)
+## 🛠️ Tech Stack
+- **Interface:** Telegram Bot API
+- **Backend:** Google Apps Script (Web App / Webhook)
 - **Database:** Google Sheets
-- **OCR:** Google Drive API
+- **OCR Engine:** Google Drive API
 - **Visualization:** Looker Studio
 
-## Setup Instructions
-1. **Google Sheet:** Create a sheet with headers: `Timestamp`, `Raw_kwh`, `Shift`, `Delta_kwh`, `Daily_Total`, `Notes`.
-2. **Google Form:** Link a form to the sheet with a "Reading (kWh)" number field.
-3. **Apps Script:** 
-   - Open **Extensions > Apps Script**.
-   - Copy the contents of `src/Code.gs` into the editor.
-   - Set up an **On Form Submit** trigger for the `onFormSubmit` function.
-4. **Timezone:** Ensure your script and sheet are set to `Asia/Manila`.
+## ⚙️ Setup Instructions
+1. **Create Bot:** Message `@BotFather` on Telegram to get your **API Token**.
+2. **Get ID:** Message `@userinfobot` to get your **Numeric User ID**.
+3. **Google Sheet:** Create a sheet named `Readings` with headers: `Timestamp`, `Raw_kwh`, `Image_Url`, `Shift`, `Delta_kwh`, `Daily_Total`, `Notes`.
+4. **Apps Script:**
+   - Paste `src/Code.gs` into the editor.
+   - Replace `YOUR_BOT_TOKEN_HERE` and `ALLOWED_USER_ID`.
+   - **Deploy > New Deployment > Web App** (Access: "Anyone").
+   - Copy the Web App URL and paste it into the `setWebhook()` function.
+   - Run `setWebhook()` once.
 
-## Rules & Constraints
-- **Zero-Cost:** 100% free tools and APIs only.
-- **Data Integrity:** Original readings are never modified; calculations happen in separate columns.
-- **Localization:** Fixed to Philippine Peso (PHP) and `Asia/Manila` timezone.
+---
+*Created with the help of Gemini CLI.*
