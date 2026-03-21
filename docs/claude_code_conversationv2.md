@@ -19,7 +19,7 @@ User (Telegram)
 
 ## Google Sheet
 
-**Sheet ID:** `1gv9MYmf0p-dw2X5j0J0wViug8VOrujZFyM2HldfISN0`
+**Sheet ID:** `YOUR_SHEET_ID_HERE`
 **Tab name:** `Readings`
 
 **Columns:**
@@ -68,7 +68,7 @@ Functions:
 **Constants:**
 ```javascript
 const BOT_TOKEN  = "YOUR_BOT_TOKEN";
-const SHEET_ID   = "1gv9MYmf0p-dw2X5j0J0wViug8VOrujZFyM2HldfISN0";
+const SHEET_ID   = "YOUR_SHEET_ID_HERE";
 const SHEET_NAME = "Readings";
 ```
 
