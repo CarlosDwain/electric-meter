@@ -5,7 +5,10 @@ node_modules/
 # Environment / Secrets
 .env
 .env.local
+
+# Folders
 docs/
+code-reviewer/
 
 # Gemini CLI / Internal
 .gemini/
