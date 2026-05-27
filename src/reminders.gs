@@ -50,9 +50,23 @@ function setupTriggers() {
     .timeBased()
     .everyMinutes(15)
     .create();
+  
+  // Daily summary — 9 PM
+  ScriptApp.newTrigger("sendDailySummary")
+    .timeBased().atHour(21).everyDays(1)
+    .inTimezone(CONFIG.TIMEZONE).create();
+  
+  // Weekly report — every Sunday 8 AM
+  ScriptApp.newTrigger("sendWeeklyReport")
+    .timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY)
+    .atHour(8).inTimezone(CONFIG.TIMEZONE).create();
+  
+  // Anomaly check — 10 PM
+  ScriptApp.newTrigger("checkAnomaly")
+    .timeBased().atHour(22).everyDays(1)
+    .inTimezone(CONFIG.TIMEZONE).create();
 
-  console.log("Triggers created successfully.");
-  console.log("Morning: 8:00 AM | Evening: 8:00 PM | Nudge check: every 15 min");
+  console.log("All 6 triggers created successfully.");
 }
 
 // ─── Reminder functions ───────────────────────────────────────────────────────
