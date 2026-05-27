@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚡ Electric Meter Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1419;
+      --card: #1a2028;
+      --card-2: #232b35;
+      --text: #e4e7eb;
+      --text-dim: #8b95a3;
+      --accent: #ffd54f;
+      --accent-2: #4fc3f7;
+      --good: #66bb6a;
+      --bad: #ef5350;
+      --border: #2a3440;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 16px 14px 40px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 4px 2px;
+    }
+
+    .title {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    .last-updated {
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--good);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    .big-number {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .big-number-sub {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .stat-card {
+      background: var(--card-2);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .stat-value-accent { color: var(--accent); }
+    .stat-value-blue   { color: var(--accent-2); }
+    .stat-value-good   { color: var(--good); }
+    .stat-value-bad    { color: var(--bad); }
+
+    .progress {
+      height: 8px;
+      background: var(--card-2);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 12px 0 8px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 4px;
+      transition: width 0.6s ease;
+    }
+
+    .progress-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 220px;
+      margin-top: 4px;
+    }
+
+    .chart-wrap-tall {
+      height: 240px;
+    }
+
+    .comparison-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comparison-row:last-child {
+      border-bottom: none;
+    }
+
+    .comparison-label {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .comparison-value {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .diff-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+
+    .diff-good { background: rgba(102, 187, 106, 0.15); color: var(--good); }
+    .diff-bad  { background: rgba(239, 83, 80, 0.15); color: var(--bad); }
+    .diff-same { background: rgba(139, 149, 163, 0.15); color: var(--text-dim); }
+
+    .loading, .error {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-dim);
+    }
+
+    .error { color: var(--bad); }
+
+    .reading-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .reading-shift {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--card-2);
+      color: var(--text-dim);
+    }
+
+    @media (max-width: 380px) {
+      .big-number { font-size: 28px; }
+      .stat-value { font-size: 16px; }
+      .chart-wrap { height: 200px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title">⚡ Electric Meter</div>
+      <div class="last-updated">
+        <span class="dot"></span>
+        <span id="lastUpdated">Loading…</span>
+      </div>
+    </div>
+
+    <div id="content">
+      <div class="loading">Loading dashboard…</div>
+    </div>
+  </div>
+
+<script>
+  let charts = {};
+
+  function fetchData() {
+    const url = window.location.pathname + "?action=data";
+    google.script.run
+      .withSuccessHandler(renderDashboard)
+      .withFailureHandler(showError)
+      .getDashboardData();
+  }
+
+  function showError(err) {
+    document.getElementById("content").innerHTML =
+      '<div class="error">Failed to load: ' + (err.message || err) + '</div>';
+  }
+
+  function renderDashboard(data) {
+    if (!data || !data.ok) {
+      document.getElementById("content").innerHTML =
+        '<div class="error">' + (data && data.message ? data.message : "No data available.") + '</div>';
+      return;
+    }
+
+    document.getElementById("lastUpdated").textContent =
+      "Updated " + formatTime(new Date(data.lastUpdated));
+
+    document.getElementById("content").innerHTML = `
+      ${renderTodayCard(data.today, data.rate)}
+      ${renderBillingCard(data.billingCycle)}
+      ${renderLast7Card()}
+      ${renderWeeklyCard(data.weeklyComparison)}
+      ${renderLast30Card()}
+      ${renderLastReadingCard(data.lastReading)}
+    `;
+
+    // Render charts after DOM updated
+    setTimeout(() => {
+      renderChart7Days(data.last7Days);
+      renderChart30Days(data.last30Days);
+    }, 50);
+  }
+
+  function renderTodayCard(today, rate) {
+    const kwh = today.dailyTotal !== null ? today.dailyTotal.toFixed(2) : "—";
+    const cost = today.estCost !== null ? "₱" + today.estCost.toFixed(2) : "—";
+    const lastTime = today.lastReadingTime || "—";
+
+    return `
+      <div class="card">
+        <div class="card-title">Today · ${today.date}</div>
+        <div class="big-number">${kwh} <span style="font-size:18px;color:var(--text-dim);">kWh</span></div>
+        <div class="big-number-sub">Estimated cost: ${cost}</div>
+        <div class="grid-2" style="margin-top:14px;">
+          <div class="stat-card">
+            <div class="stat-label">Readings logged</div>
+            <div class="stat-value">${today.readingCount}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Last reading</div>
+            <div class="stat-value">${lastTime}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderBillingCard(cycle) {
+    return `
+      <div class="card">
+        <div class="card-title">Billing Cycle · ${cycle.cycleStart} – ${cycle.cycleEnd}</div>
+        <div class="big-number">₱${cycle.estCost.toFixed(2)}</div>
+        <div class="big-number-sub">${cycle.totalKwh.toFixed(2)} kWh used so far</div>
+
+        <div class="progress">
+          <div class="progress-bar" style="width:${cycle.progressPct}%"></div>
+        </div>
+        <div class="progress-labels">
+          <span>Day ${cycle.daysElapsed} of ${cycle.daysInCycle}</span>
+          <span>${cycle.daysRemaining} days left</span>
+        </div>
+
+        <div class="grid-2" style="margin-top:14px;">
+          <div class="stat-card">
+            <div class="stat-label">Avg / day</div>
+            <div class="stat-value">${cycle.avgPerDay.toFixed(2)} kWh</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Projected bill</div>
+            <div class="stat-value stat-value-accent">₱${cycle.projectedCost.toFixed(2)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderLast7Card() {
+    return `
+      <div class="card">
+        <div class="card-title">Last 7 days</div>
+        <div class="chart-wrap"><canvas id="chart7"></canvas></div>
+      </div>
+    `;
+  }
+
+  function renderLast30Card() {
+    return `
+      <div class="card">
+        <div class="card-title">Last 30 days</div>
+        <div class="chart-wrap chart-wrap-tall"><canvas id="chart30"></canvas></div>
+      </div>
+    `;
+  }
+
+  function renderWeeklyCard(week) {
+    let diffText, diffClass;
+    if (week.lastWeekKwh === 0 && week.thisWeekKwh === 0) {
+      diffText = "Not enough data yet";
+      diffClass = "diff-same";
+    } else if (week.diffKwh > 0) {
+      diffText = "▲ " + week.diffKwh.toFixed(2) + " kWh more" +
+                 (week.diffPct !== null ? " (" + week.diffPct.toFixed(1) + "%)" : "");
+      diffClass = "diff-bad";
+    } else if (week.diffKwh < 0) {
+      diffText = "▼ " + Math.abs(week.diffKwh).toFixed(2) + " kWh less" +
+                 (week.diffPct !== null ? " (" + Math.abs(week.diffPct).toFixed(1) + "%)" : "");
+      diffClass = "diff-good";
+    } else {
+      diffText = "= same as last week";
+      diffClass = "diff-same";
+    }
+
+    return `
+      <div class="card">
+        <div class="card-title">Week comparison</div>
+        <div class="comparison-row">
+          <span class="comparison-label">This week</span>
+          <span class="comparison-value">${week.thisWeekKwh.toFixed(2)} kWh · ₱${week.thisWeekCost.toFixed(2)}</span>
+        </div>
+        <div class="comparison-row">
+          <span class="comparison-label">Last week</span>
+          <span class="comparison-value">${week.lastWeekKwh.toFixed(2)} kWh · ₱${week.lastWeekCost.toFixed(2)}</span>
+        </div>
+        <div class="diff-badge ${diffClass}">${diffText}</div>
+      </div>
+    `;
+  }
+
+  function renderLastReadingCard(last) {
+    if (!last) return "";
+    return `
+      <div class="card">
+        <div class="card-title">Last meter reading</div>
+        <div class="reading-line">
+          <div>
+            <div class="big-number" style="font-size:24px;">${last.kwh} <span style="font-size:14px;color:var(--text-dim);">kWh</span></div>
+            <div class="big-number-sub">${last.timestamp}</div>
+          </div>
+          <span class="reading-shift">${last.shift}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderChart7Days(data) {
+    const ctx = document.getElementById("chart7");
+    if (!ctx) return;
+    if (charts.chart7) charts.chart7.destroy();
+
+    charts.chart7 = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: data.map(d => d.label),
+        datasets: [{
+          label: "kWh",
+          data: data.map(d => d.kwh),
+          backgroundColor: "rgba(255, 213, 79, 0.7)",
+          borderColor: "rgba(255, 213, 79, 1)",
+          borderWidth: 1,
+          borderRadius: 6
+        }]
+      },
+      options: chartOptions(data, "kWh")
+    });
+  }
+
+  function renderChart30Days(data) {
+    const ctx = document.getElementById("chart30");
+    if (!ctx) return;
+    if (charts.chart30) charts.chart30.destroy();
+
+    charts.chart30 = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: data.map(d => d.label),
+        datasets: [{
+          label: "kWh",
+          data: data.map(d => d.kwh),
+          borderColor: "rgba(79, 195, 247, 1)",
+          backgroundColor: "rgba(79, 195, 247, 0.15)",
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          borderWidth: 2
+        }]
+      },
+      options: chartOptions(data, "kWh")
+    });
+  }
+
+  function chartOptions(data, unit) {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#232b35",
+          borderColor: "#2a3440",
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            label: (ctx) => {
+              const d = data[ctx.dataIndex];
+              return `${d.kwh.toFixed(2)} kWh · ₱${d.cost.toFixed(2)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          ticks: { color: "#8b95a3", font: { size: 10 }, maxRotation: 0 }
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: "rgba(255,255,255,0.05)" },
+          ticks: { color: "#8b95a3", font: { size: 10 } }
+        }
+      }
+    };
+  }
+
+  function formatTime(date) {
+    const h = date.getHours();
+    const m = String(date.getMinutes()).padStart(2, "0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    const hr = h % 12 || 12;
+    return `${hr}:${m} ${ampm}`;
+  }
+
+  // Initial load
+  fetchData();
+
+  // Auto-refresh every 5 minutes
+  setInterval(fetchData, 5 * 60 * 1000);
+</script>
+</body>
+</html>
