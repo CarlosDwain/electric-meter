@@ -126,12 +126,20 @@ function handleUpdate(update) {
     sendMessage(chatId,
       "⚡ Electric Meter Tracker — Help\n" +
       "━━━━━━━━━━━━━━━━━━━━\n" +
+      "Logging:\n" +
       "/reading — Log a new meter reading\n" +
+      "/cancel — Cancel current input\n\n" +
+      "View data:\n" +
       "/last — Show the last logged reading\n" +
       "/status — Show today's readings\n" +
       "/bill — Estimated bill for this billing cycle\n" +
-      "/compare — This week vs last week usage\n" +
-      "/cancel — Cancel current input\n\n" +
+      "/compare — This week vs last week usage\n\n" +
+      "Settings:\n" +
+      "/setrate [amount] — Update kWh rate (e.g. /setrate 11.50)\n" +
+      "/getrate — Show current kWh rate\n\n" +
+      "Other:\n" +
+      "/start — Welcome message\n" +
+      "/help — Show this message\n\n" +
       "When logging you can:\n" +
       "1 — Type the kWh number manually\n" +
       "2 — Upload a photo (OCR auto-reads the meter)\n\n" +
