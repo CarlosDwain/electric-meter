@@ -652,14 +652,12 @@
   let selectedYear = null;
 
   function renderMonthlyCard(monthlyData) {
-    if (!monthlyData || monthlyData.length === 0) return "";
-
-    selectedYear = monthlyData[0].years[monthlyData[0].months.length - 1]; // Default to latest month of first year available
-
-    const yearButtons = monthlyData.map(year => {
-      return `<button class="year-btn${year === selectedYear ? " active" : ""}" 
-          onclick="switchYear(${year})">${year}</button>`;
-    }).join("");
+    if (!monthlyData || monthlyData.years.length === 0) return "";
+  selectedYear = monthlyData.years[monthlyData.years.length - 1];
+  const yearButtons = monthlyData.years.map(year =>
+    `<button class="year-btn ${year === selectedYear ? 'active' : ''}"
+            onclick="switchYear('${year}')">${year}</button>`
+  ).join("");
     
     return `
       <div class="card" id="monthlyCard">
@@ -725,7 +723,7 @@
 
     const max = Math.max(...values);
 
-    charts.ChartMonthly = new Chart(ctx, {
+    charts.chartMonthly = new Chart(ctx, {
       type: "bar",
       data: {
         labels: months,

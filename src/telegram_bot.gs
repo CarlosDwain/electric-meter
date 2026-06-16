@@ -20,6 +20,7 @@ const BOT_TOKEN  = "YOUR_BOT_TOKEN_HERE";
 const SHEET_ID   = "YOUR_SHEET_ID_HERE";
 const ALLOWED_USER_ID = 123456789; // Your Numeric ID from @userinfobot
 const SHEET_NAME = "Readings";
+const MONTHLY_SHEET_NAME = "Monthly_History";
 
 const STATE_IDLE             = "IDLE";
 const STATE_WAIT_OPTION      = "WAIT_OPTION";

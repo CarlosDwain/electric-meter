@@ -19,9 +19,6 @@
 
 // ─── Web app entry point ──────────────────────────────────────────────────────
 
-const SHEET_NAME = "Readings";
-const MONTHLY_SHEET_NAME = "Monthly_History";
-
 function doGet(e) {
   // If a JSON data request, return data
   if (e && e.parameter && e.parameter.action === "data") {
@@ -241,8 +238,8 @@ function getMonthlyData(data, colMap) {
   if (lastRow >= 2) {
     const rows = monthlySheet.getRange(2, 1, lastRow - 1, 2).getValues();
     rows.forEach(row => {
-      const label = row[0].toISOString.trim();
-      const val = parseFloat(row[1].toISOString.replace(/,/g, ""));
+      const label = row[0].toString.trim();
+      const val = parseFloat(row[1].toString.replace(/,/g, ""));
       if (label && !isNaN(val)) {
         historical[label] = val;
       }
@@ -250,7 +247,9 @@ function getMonthlyData(data, colMap) {
   }
 
   // Auto Calculate current month total from Readings sheet
-  let cycleStart = new Date(2026, 4, 14);
+  let cycleStart = new Date(2026, 3, 14);
+
+  const autoCalculated = {};
 
   while (cycleStart <= now) {
     const cycleEnd = new Date(cycleStart);
@@ -261,7 +260,7 @@ function getMonthlyData(data, colMap) {
     if (cycleEnd <= now) {
       const monthLabel = Utilities.formatDate(cycleStart, CONFIG.TIMEZONE, "MMM-yy");
 
-      const total = readingsData
+      const total = data
         .filter(row => {
           const ts = new Date(row[0]);
           return ts >= cycleStart && ts <= cycleEnd &&
@@ -269,7 +268,7 @@ function getMonthlyData(data, colMap) {
                  row[colMap.Daily_Total - 1] !== "" &&
                  !isNaN(parseFloat(row[colMap.Daily_Total - 1]));
         })
-        .reduce((sum, row) => sum + parseFloat(row[colMap.Daily_Total - 1]));
+        .reduce((sum, row) => sum + parseFloat(row[colMap.Daily_Total - 1]), 0);
 
         if (total > 0) {
           autoCalculated[monthLabel] = parseFloat(total.toFixed(2));
