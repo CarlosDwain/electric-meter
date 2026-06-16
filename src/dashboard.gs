@@ -238,8 +238,8 @@ function getMonthlyData(data, colMap) {
   if (lastRow >= 2) {
     const rows = monthlySheet.getRange(2, 1, lastRow - 1, 2).getValues();
     rows.forEach(row => {
-      const label = row[0].toString.trim();
-      const val = parseFloat(row[1].toString.replace(/,/g, ""));
+      const label = row[0].toString().trim();
+      const val = parseFloat(row[1].toString().replace(/,/g, ""));
       if (label && !isNaN(val)) {
         historical[label] = val;
       }
@@ -247,8 +247,8 @@ function getMonthlyData(data, colMap) {
   }
 
   // Auto Calculate current month total from Readings sheet
+  const now = new Date();
   let cycleStart = new Date(2026, 3, 14);
-
   const autoCalculated = {};
 
   while (cycleStart <= now) {
