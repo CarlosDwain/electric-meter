@@ -226,6 +226,147 @@
       .stat-value { font-size: 16px; }
       .chart-wrap { height: 200px; }
     }
+
+    .year-picker {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .year-btn {
+      padding: 6px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      color: var(--text-dim);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .year-btn.active {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+
+    .export-btn {
+      width: 100%;
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .export-btn:hover { background: var(--border); }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      max-width: 360px;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .modal-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    .export-opt {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      color: var(--text-dim);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .export-opt.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(255,213,79,0.08);
+    }
+
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .year-select {
+      flex: 1;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .modal-cancel {
+      flex: 1;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .modal-confirm {
+      flex: 2;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: #000;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .monthly-stats { margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -266,12 +407,15 @@
       return;
     }
 
+    window._dashboardData = data; // Store data for export
+
     document.getElementById("lastUpdated").textContent =
       "Updated " + formatTime(new Date(data.lastUpdated));
 
     document.getElementById("content").innerHTML = `
       ${renderTodayCard(data.today, data.rate)}
       ${renderBillingCard(data.billingCycle)}
+      ${renderMonthlyCard(data.monthlyData)}
       ${renderLast7Card()}
       ${renderWeeklyCard(data.weeklyComparison)}
       ${renderLast30Card()}
@@ -282,6 +426,11 @@
     setTimeout(() => {
       renderChart7Days(data.last7Days);
       renderChart30Days(data.last30Days);
+      if (data.monthlyData && selectedYear) {
+        const yearData = data.monthlyData.data[selectedYear] || [];
+        renderMonthlyChart(yearData, selectedYear);
+        renderMonthlyStats(yearData);
+      }
     }, 50);
   }
 
@@ -499,6 +648,238 @@
 
   // Auto-refresh every 5 minutes
   setInterval(fetchData, 5 * 60 * 1000);
+
+  let selectedYear = null;
+
+  function renderMonthlyCard(monthlyData) {
+    if (!monthlyData || monthlyData.length === 0) return "";
+
+    selectedYear = monthlyData[0].years[monthlyData[0].months.length - 1]; // Default to latest month of first year available
+
+    const yearButtons = monthlyData.map(year => {
+      return `<button class="year-btn${year === selectedYear ? " active" : ""}" 
+          onclick="switchYear(${year})">${year}</button>`;
+    }).join("");
+    
+    return `
+      <div class="card" id="monthlyCard">
+        <div class="card-title">Monthly Usage</div>
+        <div class="year-picker">${yearButtons}</div>
+        <div class="chart-wrap chart-wrap-tall">
+          <canvas id="chartMonthly"></canvas>
+        </div>
+        <div id="monthlyStats" class="monthly-stats"></div>
+        <button class="export-btn" onclick="openExportModal()">⬇ Export Data</button>
+      </div>
+
+      <!-- Export Modal -->
+      <div id="exportModal" class="modal-overlay" style="display:none;">
+        <div class="modal">
+          <div class="modal-title">Export Data</div>
+
+          <div class="modal-label">What to export:</div>
+          <div class="grid-2" style="margin-bottom:14px;">
+            <button class="export-opt active" id="optAll" onclick="selectExportOpt('all')">All years</button>
+            <button class="export-opt" id="optYear" onclick="selectExportOpt('year')">Selected year</button>
+          </div>
+
+          <div id="rangeSelector" style="display:none;">
+            <div class="modal-label">Year range:</div>
+            <div class="range-row">
+              <select id="exportStart" class="year-select"></select>
+              <span style="color:var(--text-dim);">to</span>
+              <select id="exportEnd" class="year-select"></select>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button class="modal-cancel" onclick="closeExportModal()">Cancel</button>
+            <button class="modal-confirm" onclick="doExport()">Download .xlsx</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function switchYear(year) {
+    selectedYear = year;
+    document.querySelectorAll(".year-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.textContent == year);
+    });
+    const data = window._dashboardData.monthlyData.data[year] || [];
+    renderMonthlyChart(data, year);
+    renderMonthlyStats(data);
+  }
+
+  function renderMonthlyChart(data, year) {
+    const ctx = document.getElementById("chartMonthly");
+    if (!ctx) return;
+    if (charts.chartMonthly) charts.chartMonthly.destroy();
+
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const labels = months.map(m => m + "-" + year.slice(2));
+    const values = labels.map(label => {
+      const entry = data.find(d => d.label === label);
+      return entry ? entry.kwh : 0;
+    });
+
+    const max = Math.max(...values);
+
+    charts.ChartMonthly = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: months,
+        datasets: [{
+          label: "kWh",
+          data: values,
+          backgroundColor: values.map(v =>
+            v === max ? "rgba(255, 213, 79, 0.9)" : "rgba(79, 195, 247, 0.6)"
+          ),
+          borderColor: values.map(v =>
+            v === max ? "rgba(255, 213, 79, 1)" : "rgba(79, 195, 247, 0.8)"
+          ),
+          borderWidth: 1,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "#232b35",
+            borderColor: "#2a3440",
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              label: ctx => ctx.parsed.y > 0
+                ? ctx.parsed.y.toFixed(2) + " kWh"
+                : "No data"
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(255,255,255,0.04)" },
+            ticks: { color: "#8b95a3", font: { size: 11 } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(255,255,255,0.05)" },
+            ticks: { color: "#8b95a3", font: { size: 10 } }
+          }
+        }
+      }
+    });
+  }
+
+  function renderMonthlyStats(data) {
+   const el = document.getElementById("monthlyStats");
+    if (!el) return;
+
+    const values = data.map(d => d.kwh).filter(v => v > 0);
+    if (values.length == 0) { el.innerHTML = ""; return; }
+
+    const total = values.reduce((s, v) => s + v, 0);
+    const avg = total / values.length;
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    const maxEntry = data.find(d => d.kwh === max);
+    const minEntry = data.find(d => d.kwh === min);
+
+    el.innerHTML = `
+      <div class="grid-2" style="margin-top:14px;">
+        <div class="stat-card">
+          <div class="stat-label">Total</div>
+          <div class="stat-value">${total.toFixed(0)} kWh</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Monthly avg</div>
+          <div class="stat-value">${avg.toFixed(0)} kWh</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Highest</div>
+          <div class="stat-value stat-value-bad">${max.toFixed(0)} kWh <span style="font-size:11px;color:var(--text-dim);">${maxEntry ? maxEntry.month : ""}</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Lowest</div>
+          <div class="stat-value stat-value-good">${min.toFixed(0)} kWh <span style="font-size:11px;color:var(--text-dim);">${minEntry ? minEntry.month : ""}</span></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ─── Export modal ─────────────────────────────────────────────────────────────
+
+  let exportOpt = "all";
+
+  function openExportModal() {
+    const years = window._dashboardData.monthlyData.years;
+    const startSel = document.getElementById("exportStart");
+    const endSel = document.getElementById("exportEnd");
+    startSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join("");
+    endSel.innerHTML   = years.map(y => `<option value="${y}">${y}</option>`).join("");
+    endSel.value = years[years.length - 1];
+    document.getElementById("exportModal").style.display = "flex";
+  }
+
+  function closeExportModal() {
+    document.getElementById("exportModal").style.display = "none";
+  }
+
+  function selectExportOpt(opt) {
+    exportOpt = opt;
+    document.getElementById("optAll").classList.toggle("active", opt === "all");
+    document.getElementById("optYear").classList.toggle("active", opt === "year");
+    document.getElementById("rangeSelector").style.display = opt === "year" ? "block" : "none";
+  }
+
+  function doExport() {
+    const startYear = parseInt(document.getElementById("exportStart").value);
+    const endYear   = parseInt(document.getElementById("exportEnd").value);
+    const exportAll = exportOpt === "all";
+
+    google.script.run
+      .withSuccessHandler(downloadXlsx)
+      .withFailureHandler(err => alert("Export failed: " + err.message))
+      .getExportData(startYear, endYear, exportAll);
+
+    closeExportModal();
+  }
+
+  function downloadXlsx(data) {
+    // Build CSV content for monthly summary
+    let monthlyCsv = "Month,Consumption (kWh)\n";
+    data.monthlySummary.forEach(row => {
+      monthlyCsv += `${row.month},${row.kwh}\n`;
+    });
+
+    // Build CSV content for daily readings
+    let dailyCsv = "Date,kWh,Daily Total\n";
+    data.dailyReadings.forEach(row => {
+      dailyCsv += `${row.date},${row.kwh},${row.dailyTotal}\n`;
+    });
+
+    // Download monthly summary
+    downloadFile(monthlyCsv, "monthly_summary.csv", "text/csv");
+
+    // Short delay then download daily readings
+    setTimeout(() => {
+      downloadFile(dailyCsv, "daily_readings.csv", "text/csv");
+    }, 500);
+  }
+
+  function downloadFile(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
 </script>
 </body>
 </html>

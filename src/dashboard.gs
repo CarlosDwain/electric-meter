@@ -19,6 +19,9 @@
 
 // ─── Web app entry point ──────────────────────────────────────────────────────
 
+const SHEET_NAME = "Readings";
+const MONTHLY_SHEET_NAME = "Monthly_History";
+
 function doGet(e) {
   // If a JSON data request, return data
   if (e && e.parameter && e.parameter.action === "data") {
@@ -62,7 +65,8 @@ function getDashboardData() {
     last7Days: getLast7DaysData(allData, colMap, rate),
     last30Days: getLast30DaysData(allData, colMap, rate),
     weeklyComparison: getWeeklyComparisonData(allData, colMap, rate),
-    lastReading: getLastReadingData(allData, colMap)
+    lastReading: getLastReadingData(allData, colMap),
+    monthlyData: getMonthlyData(allData, colMap)
   };
 }
 
@@ -225,4 +229,118 @@ function getLastReadingData(data, colMap) {
     }
   }
   return null;
+}
+
+function getMonthlyData(data, colMap) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const monthlySheet = ss.getSheetByName(MONTHLY_SHEET_NAME);
+  const lastRow = monthlySheet.getLastRow();
+
+  // Read Monthly_History data
+  const historical = {};
+  if (lastRow >= 2) {
+    const rows = monthlySheet.getRange(2, 1, lastRow - 1, 2).getValues();
+    rows.forEach(row => {
+      const label = row[0].toISOString.trim();
+      const val = parseFloat(row[1].toISOString.replace(/,/g, ""));
+      if (label && !isNaN(val)) {
+        historical[label] = val;
+      }
+    });
+  }
+
+  // Auto Calculate current month total from Readings sheet
+  let cycleStart = new Date(2026, 4, 14);
+
+  while (cycleStart <= now) {
+    const cycleEnd = new Date(cycleStart);
+    cycleEnd.setMonth(cycleEnd.getMonth() + 1); // 13th of each month
+    cycleEnd.setDate(13);
+    cycleEnd.setHours(23, 59, 59, 999);
+
+    if (cycleEnd <= now) {
+      const monthLabel = Utilities.formatDate(cycleStart, CONFIG.TIMEZONE, "MMM-yy");
+
+      const total = readingsData
+        .filter(row => {
+          const ts = new Date(row[0]);
+          return ts >= cycleStart && ts <= cycleEnd &&
+                 row[colMap.Shift - 1] === "Morning" &&
+                 row[colMap.Daily_Total - 1] !== "" &&
+                 !isNaN(parseFloat(row[colMap.Daily_Total - 1]));
+        })
+        .reduce((sum, row) => sum + parseFloat(row[colMap.Daily_Total - 1]));
+
+        if (total > 0) {
+          autoCalculated[monthLabel] = parseFloat(total.toFixed(2));
+        }
+    }
+
+    cycleStart = new Date(cycleEnd);
+    cycleStart.setDate(14);
+  }
+
+  const merged = { ...historical, ...autoCalculated };
+
+  const years = {};
+  Object.entries(merged).forEach(([label, kwh]) => {
+    const parts = label.split("-");
+    if (parts.length !== 2) return;
+    const year = parts[1].length === 2 ? "20" + parts[1] : parts[1];
+    if (!years[year]) years[year] = [];
+    years[year].push({ label: parts[0] + "-" + parts[1], month: parts[0], kwh });
+  });
+
+  return {
+    years: Object.keys(years).sort(),
+    data: years  
+  };
+}
+
+
+// ─── Export data ──────────────────────────────────────────────────────────────
+
+function getExportData(startYear, endYear, exportAll) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  const colMap = getColumnMapping(sheet);
+  const lastRow = sheet.getLastRow();
+
+  const allReadings = lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues()
+    : [];
+
+    const monthly = getMonthlyData(allReadings, colMap);
+
+    const monthlySummary = [];
+    monthly.years.forEach(year => {
+      if (!exportAll && (parseInt(year) < startYear || parseInt(year) > endYear)) return;
+      monthly.data[year].forEach(entry => {
+        monthlySummary.push({
+          month: entry.label,
+          kwh: entry.kwh
+        });
+      });
+    });
+
+    const dailyReadings = allReadings
+      .filter(row => {
+        if (!row[0]) return false;
+        const ts = new Date(row[0]);
+        const year = ts.getFullYear();
+        if (!exportAll && (year < startYear || year > endYear)) return false;
+        const dailyTotal = row[colMap.Daily_Total - 1];
+        return dailyTotal !== "" && !isNaN(parseFloat(dailyTotal));
+      })
+      .map(row => ({
+        date: Utilities.formatDate(new Date(row[0]), CONFIG.TIMEZONE, "yyyy-MM-dd"),
+        kwh: parseFloat(row[colMap.Raw_kwh - 1]) || 0,
+        dailyTotal: parseFloat(row[colMap.Daily_Total - 1]) || 0
+      }));
+
+  return {
+    monthlySummary,
+    dailyReadings,
+    availableYears: monthly.years
+  };
 }
