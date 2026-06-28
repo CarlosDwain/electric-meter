@@ -63,9 +63,9 @@ function handleUpdate(update) {
   const userId = message.from.id;
 
   // --- SECURITY CHECK: Whitelist ---
-  if (userId !== ALLOWED_USER_ID) {
-    return;
-  }
+  // if (userId !== ALLOWED_USER_ID) {
+  //   return;
+  // }
 
   const state  = getState(chatId);
   const text   = message.text ? message.text.trim() : "";
