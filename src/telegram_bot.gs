@@ -1,6 +1,6 @@
 /**
  * Electric Meter Tracker — Telegram Bot
- * Version 5.3 (OCR with manual fallback)
+ * Version 5.4 (OCR with manual fallback)
  *
  * OCR flow:
  *   User sends photo
@@ -30,12 +30,15 @@ const STATE_WAIT_OCR_CONFIRM = "WAIT_OCR_CONFIRM";  // user confirms OCR result
 const STATE_WAIT_OCR_MANUAL  = "WAIT_OCR_MANUAL";   // user types correct value after OCR rejection
 const STATE_CONFIRM_VALUE    = "CONFIRM_VALUE";
 const STATE_CONFIRM_GAP      = "CONFIRM_GAP";
+const STATE_CONFIRM_EDIT = "CONFIRM_EDIT";
+const STATE_CONFIRM_DELETE = "CONFIRM_DELETE";
 
 const STATE_TIMEOUT_MS    = 10 * 60 * 1000;
 const DUPLICATE_WINDOW_MS = 60 * 1000;
 const SANITY_THRESHOLD    = 500;
 const KWH_MIN             = 10000;   // realistic lower bound for this meter
 const KWH_MAX             = 999999;  // realistic upper bound
+
 
 // ─── Webhook entry point ──────────────────────────────────────────────────────
 
@@ -130,6 +133,9 @@ function handleUpdate(update) {
       "Logging:\n" +
       "/reading — Log a new meter reading\n" +
       "/cancel — Cancel current input\n\n" +
+      "/edit [value] — Edit the last reading (e.g. /edit 28504)\n" +
+      "/delete — Delete the last reading\n" +
+      "/history [n] — Show last n readings (e.g. /history 10)\n" +
       "View data:\n" +
       "/last — Show the last logged reading\n" +
       "/status — Show today's readings\n" +
@@ -188,6 +194,21 @@ function handleUpdate(update) {
     return;
   }
 
+  if (text.startsWith("/history")) {
+    sendHistory(chatId, text);
+    return;
+  }
+
+  if (text.startsWith("/edit")) {
+    handleEditCommand(chatId, text);
+    return;
+  }
+
+  if (text.startsWith("/delete")) {
+    handleDeleteCommand(chatId);
+    return;
+  }
+
   if (text === "/getrate") {
     const rate = getKwhRate();
     sendMessage(chatId, "Current rate: ₱" + rate.toFixed(2) + "/kWh\n\nTo update: /setrate 11.50");
@@ -219,6 +240,28 @@ function handleUpdate(update) {
   }
 
   // --- Conversation states ---
+  if (state === STATE_CONFIRM_EDIT) {
+    if (text.toLowerCase() === "yes") {
+      confirmEdit(chatId);
+    } else {
+      setState(chatId, STATE_IDLE);
+      clearPending(chatId);
+      sendMessage(chatId, "Edit cancelled. Send /history to view readings.");
+    }
+    return;
+  }
+
+  if (state === STATE_CONFIRM_DELETE) {
+    if (text.toLowerCase() === "yes") {
+      confirmDelete(chatId);
+    } else {
+      setState(chatId, STATE_IDLE);
+      clearPending(chatId);
+      sendMessage(chatId, "Delete cancelled. Send /history to view readings.");
+    }
+    return;
+  }
+
   if (state === STATE_CONFIRM_GAP) {
     if (text.toLowerCase() === "yes") {
       setState(chatId, STATE_WAIT_OPTION);
