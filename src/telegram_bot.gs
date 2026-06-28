@@ -132,10 +132,10 @@ function handleUpdate(update) {
       "━━━━━━━━━━━━━━━━━━━━\n" +
       "Logging:\n" +
       "/reading — Log a new meter reading\n" +
-      "/cancel — Cancel current input\n\n" +
+      "/cancel — Cancel current input\n" +
       "/edit [value] — Edit the last reading (e.g. /edit 28504)\n" +
       "/delete — Delete the last reading\n" +
-      "/history [n] — Show last n readings (e.g. /history 10)\n" +
+      "/history [n] — Show last n readings (e.g. /history 10)\n\n" +
       "View data:\n" +
       "/last — Show the last logged reading\n" +
       "/status — Show today's readings\n" +
