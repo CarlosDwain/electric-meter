@@ -16,9 +16,9 @@
  *   - Cross-checks against last recorded reading (must be >= last)
  */
 
-const BOT_TOKEN  = "YOUR_BOT_TOKEN_HERE";
-const SHEET_ID   = "YOUR_SHEET_ID_HERE";
-const ALLOWED_USER_ID = 123456789; // Your Numeric ID from @userinfobot
+// const BOT_TOKEN  = "YOUR_BOT_TOKEN_HERE";
+// const SHEET_ID   = "YOUR_SHEET_ID_HERE";
+// const ALLOWED_USER_ID = 123456789; // Your Numeric ID from @userinfobot
 const SHEET_NAME = "Readings";
 const MONTHLY_SHEET_NAME = "Monthly_History";
 
@@ -39,6 +39,15 @@ const SANITY_THRESHOLD    = 500;
 const KWH_MIN             = 10000;   // realistic lower bound for this meter
 const KWH_MAX             = 999999;  // realistic upper bound
 
+// ─── Define bot token and sheet ID ─────────────────────────────────────────────
+
+function getBotToken() {
+  return PropertiesService.getScriptProperties().getProperty("bot_token");
+}
+
+function getSheetId() {
+  return PropertiesService.getScriptProperties().getProperty("sheet_id");
+}
 
 // ─── Webhook entry point ──────────────────────────────────────────────────────
 
@@ -474,11 +483,11 @@ function handleManualReading(chatId, kwh) {
 
 function fetchTelegramFile(fileId) {
   try {
-    const metaUrl = "https://api.telegram.org/bot" + BOT_TOKEN + "/getFile?file_id=" + fileId;
+    const metaUrl = "https://api.telegram.org/bot" + getBotToken() + "/getFile?file_id=" + fileId;
     const meta    = JSON.parse(UrlFetchApp.fetch(metaUrl).getContentText());
     if (!meta.ok) throw new Error("getFile failed: " + JSON.stringify(meta));
 
-    const fileUrl = "https://api.telegram.org/file/bot" + BOT_TOKEN + "/" + meta.result.file_path;
+    const fileUrl = "https://api.telegram.org/file/bot" + getBotToken() + "/" + meta.result.file_path;
     return UrlFetchApp.fetch(fileUrl).getBlob().setContentType("image/jpeg");
   } catch (err) {
     console.error("fetchTelegramFile error: " + err.toString());
@@ -486,8 +495,12 @@ function fetchTelegramFile(fileId) {
   }
 }
 
-const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
+// const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
 const GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=";
+
+function getGeminiApiKey() {
+  return PropertiesService.getScriptProperties().getProperty("gemini_api_key");
+}
 
 /**
  * Sends the image to Gemini Vision and asks it to extract the kWh reading.
@@ -519,7 +532,7 @@ function performOcrOnBlob(imageBlob, lastKwh) {
       }]
     };
 
-    const response = UrlFetchApp.fetch(GEMINI_URL + GEMINI_API_KEY, {
+    const response = UrlFetchApp.fetch(GEMINI_URL + getGeminiApiKey(), {
       method: "post",
       contentType: "application/json",
       payload: JSON.stringify(payload),
@@ -724,7 +737,7 @@ function clearPending(chatId) {
 
 function sendMessage(chatId, text) {
   try {
-    UrlFetchApp.fetch("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage", {
+    UrlFetchApp.fetch("https://api.telegram.org/bot" + getBotToken() + "/sendMessage", {
       method: "post",
       contentType: "application/json",
       payload: JSON.stringify({ chat_id: chatId, text: text }),
