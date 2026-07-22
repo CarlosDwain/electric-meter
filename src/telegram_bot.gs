@@ -1,19 +1,16 @@
 /**
  * Electric Meter Tracker — Telegram Bot
- * Version 5.4 (OCR with manual fallback)
  *
- * OCR flow:
+ * Meter-photo flow:
  *   User sends photo
- *   → Drive OCR runs
- *   → If OCR succeeds: bot shows result and asks "Is this correct? yes / no"
+ *   → Gemini extracts a reading
+ *   → If extraction succeeds: bot shows the result and asks "Is this correct? yes / no"
  *       → yes: logged to sheet
  *       → no: bot asks user to type the correct value
  *   → If OCR fails: bot immediately asks user to type the value manually
  *
- * Smart number extraction from OCR text:
- *   - Filters to numbers in realistic kWh range (10000–999999)
- *   - Picks the largest match (main reading dominates the display)
- *   - Cross-checks against last recorded reading (must be >= last)
+ * Extracted readings are validated against the configured meter range and
+ * must not be lower than the last recorded reading.
  */
 
 // const BOT_TOKEN  = "YOUR_BOT_TOKEN_HERE";
@@ -584,7 +581,7 @@ function sendLastReading(chatId) {
 // ─── /status command ──────────────────────────────────────────────────────────
 
 function sendTodayStatus(chatId) {
-  const ss      = SpreadsheetApp.openById(SHEET_ID);
+  const ss      = SpreadsheetApp.openById(getSheetId());
   const sheet   = ss.getSheetByName(SHEET_NAME);
   const colMap  = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();
@@ -628,7 +625,7 @@ function sendTodayStatus(chatId) {
 // ─── Sheet writer ─────────────────────────────────────────────────────────────
 
 function writeToSheet(rawKwh, source) {
-  const ss        = SpreadsheetApp.openById(SHEET_ID);
+  const ss        = SpreadsheetApp.openById(getSheetId());
   const sheet     = ss.getSheetByName(SHEET_NAME);
   const colMap    = getColumnMapping(sheet);
   const timestamp = new Date();
@@ -652,7 +649,7 @@ function writeToSheet(rawKwh, source) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getLastRecord() {
-  const ss      = SpreadsheetApp.openById(SHEET_ID);
+  const ss      = SpreadsheetApp.openById(getSheetId());
   const sheet   = ss.getSheetByName(SHEET_NAME);
   const colMap  = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();

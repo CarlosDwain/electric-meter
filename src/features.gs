@@ -1,7 +1,5 @@
 /**
  * Electric Meter Tracker — Extended Features
- * Version 1.0
- *
  * Features:
  *   - /bill command — estimated bill for current billing cycle
  *   - /compare command — this week vs last week usage
@@ -10,8 +8,8 @@
  *   - Anomaly alert — warns if today's usage is 50% above 7-day average
  *
  * SETUP:
- *   1. Set KWH_RATE below to your actual rate per kWh.
- *   2. Run addFeatureTriggers() once manually to create the scheduled triggers.
+ *   1. Update DEFAULT_KWH_RATE below, or set a rate with /setrate.
+ *   2. Run setupTriggers() once manually to create all reminder and report triggers.
  */
 
 const BILLING_CYCLE_DAY = 14;    // day of month your billing cycle starts
@@ -67,7 +65,7 @@ function addFeatureTriggers() {
 // ─── /bill command ────────────────────────────────────────────────────────────
 
 function getBillEstimate(chatId) {
-  const ss     = SpreadsheetApp.openById(SHEET_ID);
+  const ss     = SpreadsheetApp.openById(getSheetId());
   const sheet  = ss.getSheetByName(SHEET_NAME);
   const colMap = getColumnMapping(sheet);
 
@@ -141,7 +139,7 @@ function getBillingCycleStart(date) {
 // ─── /compare command ─────────────────────────────────────────────────────────
 
 function getWeeklyComparison(chatId) {
-  const ss     = SpreadsheetApp.openById(SHEET_ID);
+  const ss     = SpreadsheetApp.openById(getSheetId());
   const sheet  = ss.getSheetByName(SHEET_NAME);
   const colMap = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();
@@ -206,7 +204,7 @@ function sumDailyTotals(data, colMap, startDate, endDate) {
 // ─── Daily summary (auto at 9PM) ──────────────────────────────────────────────
 
 function sendDailySummary() {
-  const ss     = SpreadsheetApp.openById(SHEET_ID);
+  const ss     = SpreadsheetApp.openById(getSheetId());
   const sheet  = ss.getSheetByName(SHEET_NAME);
   const colMap = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();
@@ -250,7 +248,7 @@ function sendDailySummary() {
 // ─── Weekly report (auto every Sunday 8AM) ───────────────────────────────────
 
 function sendWeeklyReport() {
-  const ss     = SpreadsheetApp.openById(SHEET_ID);
+  const ss     = SpreadsheetApp.openById(getSheetId());
   const sheet  = ss.getSheetByName(SHEET_NAME);
   const colMap = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();
@@ -307,7 +305,7 @@ function sendWeeklyReport() {
 // ─── Anomaly alert (auto at 10PM) ─────────────────────────────────────────────
 
 function checkAnomaly() {
-  const ss     = SpreadsheetApp.openById(SHEET_ID);
+  const ss     = SpreadsheetApp.openById(getSheetId());
   const sheet  = ss.getSheetByName(SHEET_NAME);
   const colMap = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();
@@ -371,7 +369,7 @@ function broadcastToAll(message) {
   console.log("Broadcast sent to " + chatIds.length + " user(s).");
 }
 
-// ─── Test functions (remove after testing) ───────────────────────────────────
+// ─── Manual test helpers ─────────────────────────────────────────────────────
 
 function testBillEstimate() {
   getBillEstimate("14");

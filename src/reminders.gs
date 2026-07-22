@@ -1,12 +1,13 @@
 /**
  * Electric Meter Tracker — Reminders
- * Version 1.0
- *
  * HOW IT WORKS:
- *   1. setupTriggers() creates three time-based triggers (run once manually):
+ *   1. setupTriggers() creates six time-based triggers (run once manually):
  *        - sendMorningReminder: fires daily at 8:00 AM Asia/Manila
  *        - sendEveningReminder: fires daily at 8:00 PM Asia/Manila
  *        - checkNudge: fires every 15 minutes
+ *        - sendDailySummary: fires daily at 9:00 PM Asia/Manila
+ *        - sendWeeklyReport: fires every Sunday at 8:00 AM Asia/Manila
+ *        - checkAnomaly: fires daily at 10:00 PM Asia/Manila
  *
  *   2. When a reminder fires, it sends a message to all registered chat IDs
  *      and stores the reminder time in PropertiesService.

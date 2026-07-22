@@ -1,8 +1,7 @@
 /**
  * Electric Meter Tracker — Edit, Delete, History Commands
- * Version 1.0
  *
- * New commands:
+ * Commands:
  *   /edit [value]  — Edit the last logged reading and recalculate
  *   /delete        — Delete the last logged reading and recalculate
  *   /history [n]   — Show last n readings (max 20)
@@ -25,7 +24,7 @@ function sendHistory(chatId, text) {
     sendMessage(chatId, "Showing last 20 entries (maximum allowed).");
   }
 
-  const ss      = SpreadsheetApp.openById(SHEET_ID);
+  const ss      = SpreadsheetApp.openById(getSheetId());
   const sheet   = ss.getSheetByName(SHEET_NAME);
   const colMap  = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();
@@ -112,7 +111,7 @@ function confirmEdit(chatId) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const ss      = SpreadsheetApp.openById(SHEET_ID);
+    const ss      = SpreadsheetApp.openById(getSheetId());
     const sheet   = ss.getSheetByName(SHEET_NAME);
     const colMap  = getColumnMapping(sheet);
     const lastRow = sheet.getLastRow();
@@ -198,7 +197,7 @@ function confirmDelete(chatId) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const ss      = SpreadsheetApp.openById(SHEET_ID);
+    const ss      = SpreadsheetApp.openById(getSheetId());
     const sheet   = ss.getSheetByName(SHEET_NAME);
     const colMap  = getColumnMapping(sheet);
     const lastRow = sheet.getLastRow();

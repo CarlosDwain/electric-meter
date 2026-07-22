@@ -1,9 +1,9 @@
 /**
  * Electric Meter Tracker — Core Logic
- * Version 4.0 (Telegram intake, clean sheet)
+ * Shared calculation and sheet-writing logic.
  *
- * This file contains only the shared calculation and sheet-writing logic.
- * It is called by telegram_bot.gs after a photo is received and OCR is done.
+ * Called by telegram_bot.gs when a reading is logged, whether entered
+ * manually or extracted from a meter photo.
  *
  * Sheet columns (Readings tab):
  *   A: Timestamp

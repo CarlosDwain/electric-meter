@@ -1,12 +1,10 @@
 /**
  * Electric Meter Tracker — Dashboard Web App
- * Version 1.0
- *
  * Serves a mobile-first read-only dashboard for family members.
  *
  * SETUP:
  *   1. Add this file to your Apps Script project
- *   2. Add dashboard.html (the HTML file)
+ *   2. Add dashboard_html.html (the HTML file)
  *   3. Deploy → New Deployment → Web App
  *      - Execute as: Me
  *      - Who has access: Anyone
@@ -37,7 +35,7 @@ function doGet(e) {
 // ─── Data aggregation ─────────────────────────────────────────────────────────
 
 function getDashboardData() {
-  const ss     = SpreadsheetApp.openById(SHEET_ID);
+  const ss     = SpreadsheetApp.openById(getSheetId());
   const sheet  = ss.getSheetByName(SHEET_NAME);
   const colMap = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();
@@ -229,7 +227,7 @@ function getLastReadingData(data, colMap) {
 }
 
 function getMonthlyData(data, colMap) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const ss = SpreadsheetApp.openById(getSheetId());
   const monthlySheet = ss.getSheetByName(MONTHLY_SHEET_NAME);
   const lastRow = monthlySheet.getLastRow();
 
@@ -246,7 +244,7 @@ function getMonthlyData(data, colMap) {
     });
   }
 
-  // Auto Calculate current month total from Readings sheet
+  // Calculate completed billing-cycle totals from the Readings sheet.
   const now = new Date();
   let cycleStart = new Date(2026, 3, 14);
   const autoCalculated = {};
@@ -300,7 +298,7 @@ function getMonthlyData(data, colMap) {
 // ─── Export data ──────────────────────────────────────────────────────────────
 
 function getExportData(startYear, endYear, exportAll) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const ss = SpreadsheetApp.openById(getSheetId());
   const sheet = ss.getSheetByName(SHEET_NAME);
   const colMap = getColumnMapping(sheet);
   const lastRow = sheet.getLastRow();
