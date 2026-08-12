@@ -76,10 +76,8 @@ function calculateReadingLogic(timestamp, currentKwh, prevData, sheet, currentRo
     const hoursElapsed = (timestamp - prevData.timestamp) / (1000 * 60 * 60);
 
     if (hoursElapsed > 28) {
-      shift  = "Gap (Multi-Day)";
       notes += `[GAP: ${(hoursElapsed / 24).toFixed(1)} days] `;
     } else if (hoursElapsed > 14) {
-      shift  = "Gap (Missed)";
       notes += "[GAP: Missed 1 Shift] ";
     }
   } else {
@@ -87,6 +85,7 @@ function calculateReadingLogic(timestamp, currentKwh, prevData, sheet, currentRo
   }
 
   // Daily total: Morning reading minus the previous Morning reading.
+  // Gap detection stays in Notes so missed-shift morning readings still count.
   if (shift === "Morning") {
     const prevMorning = getPreviousMorningReading(sheet, currentRow, colMap);
     if (prevMorning) {
